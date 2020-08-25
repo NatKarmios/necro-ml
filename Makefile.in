@@ -180,7 +180,7 @@ opam_file_update : $(MD5TXT)
 git_tag:
 	-@git tag -d v$(VERSION) 2> /dev/null
 	-git push --delete origin v$(VERSION)
-	git tag -a v$(VERSION) -m 'OPAM necrocoq  package for multirep deployment'
+	git tag -a v$(VERSION) -m 'OPAM necroml package for multirep deployment'
 	git push --follow-tags
 
 .PHONY: all test clean  $(TGZ) $(MD5TXT) opam_install_necroml opam_remove_necroml opam_file_update
