@@ -138,7 +138,7 @@ test: necroml Makefile $(TESTS)
 	@ocamlc -I test test/lists_list.ml test/test_interpreter_lists_list.ml -o test_interpreter_lists_list.native
 	@./test_interpreter_lists_list.native || echo "$(red)Error in file lists.sk testing necroml --collect.$(reset)"
 
-opam_install_necrotex : necroml
+opam_install_necroml : necroml
 ifeq ($(OPAM),opam)
   ifneq ($(OPAMBINDIR),)
     ifneq ($(NECROLIB), no)
@@ -147,7 +147,7 @@ ifeq ($(OPAM),opam)
   endif
 endif
 
-opam_remove_necrotex :
+opam_remove_necroml :
 	@rm -f  $(OPAMBINDIR)/necroml
 
 # Download tarball from gitlab tag
@@ -173,4 +173,4 @@ opam_file_update : $(MD5TXT)
 	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat *.txt | cut -d" " -f 1)'"|' opam
 	@cp opam $(OPAM_REPO_GIT)/packages/$(NAME)/$(NAME).$(VERSION)/
 
-.PHONY: all test clean  $(TGZ) $(MD5TXT) opam_install_necrotex opam_remove_necrotex opam_file_update
+.PHONY: all test clean  $(TGZ) $(MD5TXT) opam_install_necroml opam_remove_necroml opam_file_update
