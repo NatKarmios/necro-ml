@@ -1,21 +1,57 @@
+
+##########################################################################################
+#                       CONFIGURE                                                        #
+##########################################################################################
+
+OPAM = @OPAM@
+OPAMBINDIR = @OPAMBINDIR@
+OPAMLIBDIR = @OPAMLIBDIR@
+NECROLIB = @NECROLIB@
+
+##########################################################################################
+#                       VARIABLES                                                        #
+##########################################################################################
+
 SHELL=bash
 red=`tput setaf 1``tput setab 7`
 reset=`tput sgr0`
 TESTS_RULES = $(shell ls necro-test/*.sk)
 TESTS = $(addprefix test/,$(shell ls test))
-.PHONY: all test clean
+
+NAME := necro-ml
+# WARNING : GIT TAG is prefixed with "v"
+VERSION := 0.1
+TGZ := $(NAME)-v$(VERSION).tar.gz
+MD5TXT := $(TGZ).md5sum.txt
+
+# GIT VARIABLES
+GITLAB := gitlab.inria.fr
+GITPROJECT := skeletons
+GIT_REPO := git@$(GITLAB):$(GITPROJECT)/$(NAME).git
+GIT_RELEASE := https://$(GITLAB)/$(GITPROJECT)/$(NAME)/-/archive/v$(VERSION)/$(TGZ)
+
+# OPAM VARIABLES
+OPAM_REPO_GIT := ../opam-repository
+
+##########################################################################################
+#                       TARGET                                                           #
+##########################################################################################
 
 all: necroml
 
+# This target manage stanalone local install but path to necrolib is asked
 necroml: generator.ml necroml.ml
-	ocamlfind ocamlc -package necro -linkpkg necro.cma generator.ml necroml.ml -o necroml
+ifeq ($(NECROLIB),no)
+	@read -p "Please fill path to NECROLIB:" g;\
+	ocamlc -I $$g necro.cma generator.ml necroml.ml -o necroml
+else
+	@ocamlfind ocamlc -package necro -linkpkg necro.cma generator.ml necroml.ml -o necroml
+endif
 
 clean:
-	rm -f *.cm{i,o}
-	rm -f necroml
-	rm -f test/*.cm{i,o}
-	rm -f *.native
-	rm -f test/{arith{,_list},brainfuck,concurrent,implicits,lambda,lists{,_list},miniml,nat,options,pcf,while{,_amb}}.ml
+	@rm -f *.cm{i,o}  necroml  test/*.cm{i,o}  *.native  $(TGZ) $(MD5TXT) config.status config.log configure
+	@rm -f test/{arith{,_list},brainfuck,concurrent,implicits,lambda,lists{,_list},miniml,nat,options,pcf,while{,_amb}}.ml
+	@rm -rf autom4te.cache
 
 test: necroml Makefile $(TESTS)
 	@echo "Testing necroml on arithmetic.sk"
@@ -101,3 +137,40 @@ test: necroml Makefile $(TESTS)
 	@./necroml -c necro-test/lists.sk -o test/lists_list.ml
 	@ocamlc -I test test/lists_list.ml test/test_interpreter_lists_list.ml -o test_interpreter_lists_list.native
 	@./test_interpreter_lists_list.native || echo "$(red)Error in file lists.sk testing necroml --collect.$(reset)"
+
+opam_install_necrotex : necroml
+ifeq ($(OPAM),opam)
+  ifneq ($(OPAMBINDIR),)
+    ifneq ($(NECROLIB), no)
+	@cp necroml $(OPAMBINDIR)/necroml
+    endif
+  endif
+endif
+
+opam_remove_necrotex :
+	@rm -f  $(OPAMBINDIR)/necroml
+
+# Download tarball from gitlab tag
+# Get its hashcode and store it in plain text file
+$(TGZ):
+	@rm -f $(TGZ) $(MD5TXT)
+	@wget -q $(GIT_RELEASE)
+
+#Create checkum txt file
+$(MD5TXT): $(TGZ)
+	@md5sum $(TGZ) > $(MD5TXT)
+
+# Update tarball hashcode in of opam file.
+# Copy opam file in OPAM repository.
+# INFO :
+#  - Copying file from a local repository to another could be discuss, any
+#    better automated mechanism is welcome, because here the workflow imply
+#    a new manual commit/push in OPAM repository for each new tarball/release.
+#  - md5sum of opam file in the tgz archive won't ever be the same
+#    as the one in opam-repository. This should not be an issue since
+#    the md5sum checked is the one in OPAM repository not the one in the archive.
+opam_file_update : $(MD5TXT)
+	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat *.txt | cut -d" " -f 1)'"|' opam
+	@cp opam $(OPAM_REPO_GIT)/packages/$(NAME)/$(NAME).$(VERSION)/
+
+.PHONY: all test clean  $(TGZ) $(MD5TXT) opam_install_necrotex opam_remove_necrotex opam_file_update

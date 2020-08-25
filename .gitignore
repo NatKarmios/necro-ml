@@ -15,3 +15,10 @@ test/pcf.ml
 test/while.ml
 test/while_amb.ml
 *.cm[io]
+Makefile
+config.log
+config.status
+configure
+autom4te.cache/
+*.tar.gz
+*.tar.gz.md5sum.txt
