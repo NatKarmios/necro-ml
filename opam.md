@@ -1,5 +1,5 @@
 # Package OPAM necro-ml
-At this point the necro-tex package is not released in the official OPAM repository.
+At this point the necro-ml package is not released in the official OPAM repository.
 
 ## Installation and test with OPAM
 ```
