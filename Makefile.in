@@ -173,4 +173,14 @@ opam_file_update : $(MD5TXT)
 	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat *.txt | cut -d" " -f 1)'"|' opam
 	@cp opam $(OPAM_REPO_GIT)/packages/$(NAME)/$(NAME).$(VERSION)/
 
+# Delete and create again tag for opam deployment.
+# First two instructions could fail if local or remote tag does not exist.
+# Once previous version of tag is deleted locally and remotly it is
+# created again and pushed
+git_tag:
+	-@git tag -d v$(VERSION) 2> /dev/null
+	-git push --delete origin v$(VERSION)
+	git tag -a v$(VERSION) -m 'OPAM necrocoq  package for multirep deployment'
+	git push --follow-tags
+
 .PHONY: all test clean  $(TGZ) $(MD5TXT) opam_install_necroml opam_remove_necroml opam_file_update
