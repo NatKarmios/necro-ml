@@ -32,6 +32,7 @@ GIT_RELEASE := https://$(GITLAB)/$(GITPROJECT)/$(NAME)/-/archive/v$(VERSION)/$(T
 
 # OPAM VARIABLES
 OPAM_REPO_GIT := ../opam-repository
+OPAM_NAME := $(subst -,,$(NAME))
 
 ##########################################################################################
 #                       TARGET                                                           #
@@ -171,7 +172,7 @@ $(MD5TXT): $(TGZ)
 #    the md5sum checked is the one in OPAM repository not the one in the archive.
 opam_file_update : $(MD5TXT)
 	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat *.txt | cut -d" " -f 1)'"|' opam
-	@cp opam $(OPAM_REPO_GIT)/packages/$(NAME)/$(NAME).$(VERSION)/
+	@cp opam $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/
 
 # Delete and create again tag for opam deployment.
 # First two instructions could fail if local or remote tag does not exist.
