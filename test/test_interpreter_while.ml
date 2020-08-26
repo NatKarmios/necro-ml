@@ -8,20 +8,20 @@ module rec T: sig
 		type ident = string
 		type lit = int
 		type vint = int
-		type state = Flow(T).value SMap.t
+		type state = Unspec(Monads.ID)(T).value SMap.t
 		type 'a st = state -> 'a * state
 	end =
 struct
 	type ident = string
 	type lit = int
 	type vint = int
-	type state = Flow(T).value SMap.t
+	type state = Unspec(Monads.ID)(T).value SMap.t
 	type 'a st = state -> 'a * state
 end
 
 
-module Flow = struct
-	include Flow(T)
+module Unspec = struct
+	include Unspec(Monads.ID)(T)
   let bind x f =
     function s ->
       let (y, s') = x s in
@@ -37,9 +37,9 @@ module Flow = struct
   let eq (a, b) = if a = b then True else False
 end
 
-module InterpWhile = MakeInterpreter (Flow)
+module InterpWhile = MakeInterpreter (Unspec)
 
-open Flow
+open Unspec
 open InterpWhile
 
 let initial_state = SMap.empty
@@ -55,8 +55,8 @@ let () =
       )
     )
   in
-  let ((), s) = stmt t initial_state in
-  assert(fst (Flow.read "x" s) = Int 0)
+  let ((), s) = eval_stmt t initial_state in
+  assert(fst (Unspec.read "x" s) = Int 0)
 
 let () =
   let t =
@@ -85,7 +85,7 @@ let () =
       )
     )))))
   in
-  let ((), s) = stmt t initial_state in
+  let ((), s) = eval_stmt t initial_state in
   let n = ref 10 in
   let a = ref 1 in
   let b = ref 1 in
@@ -99,12 +99,12 @@ let () =
     c := !c + !b ;
     i := !i + 1
   done ;
-  assert(fst (Flow.read "n" s) = Int !n) ;
-  assert(fst (Flow.read "a" s) = Int !a) ;
-  assert(fst (Flow.read "b" s) = Int !b) ;
-  assert(fst (Flow.read "c" s) = Int !c) ;
-  assert(fst (Flow.read "i" s) = Int !i) ;
-  assert(fst (Flow.read "d" s) = Int !d)
+  assert(fst (Unspec.read "n" s) = Int !n) ;
+  assert(fst (Unspec.read "a" s) = Int !a) ;
+  assert(fst (Unspec.read "b" s) = Int !b) ;
+  assert(fst (Unspec.read "c" s) = Int !c) ;
+  assert(fst (Unspec.read "i" s) = Int !i) ;
+  assert(fst (Unspec.read "d" s) = Int !d)
 
 let () =
   let t =
@@ -137,9 +137,9 @@ let () =
       )
     )))
   in
-  let ((), s) = stmt t initial_state in
+  let ((), s) = eval_stmt t initial_state in
   let rec fact = function
     | 0 -> 1
     | i -> i * fact (i - 1) in
-  assert(fst (Flow.read "fact" s) = Int (fact 10))
+  assert(fst (Unspec.read "fact" s) = Int (fact 10))
 

@@ -1,6 +1,7 @@
 open Nat
 
-module InterpNat = MakeInterpreter(Flow(struct end))
+module Unspec = Unspec(Monads.ID)(struct end)
+module InterpNat = MakeInterpreter(Unspec)
 
 open InterpNat
 
@@ -22,7 +23,7 @@ let three = succ two
 let four = succ three
 let ten = nat_of_int 10
 
-let () = 
+let () =
   let seventeen = (add ten (sub (mul three three) two)) in
   let sixteen = sub seventeen one in
   let () = assert(eq (pow four two) sixteen = True) in

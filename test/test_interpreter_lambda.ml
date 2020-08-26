@@ -1,14 +1,16 @@
 open Lambda
 
+module M = Monads.ID
+
 module rec T: (TYPES with type ident = string
-	and type env = (T.ident * Flow(T).clos) list) = struct
+	and type env = (T.ident * Unspec(M)(T).clos) list) = struct
 	type ident = string
-	and env = (ident * Flow(T).clos) list
+	and env = (ident * Unspec(M)(T).clos) list
 end
 
-module Flow = struct
+module Unspec = struct
 	include T
-	include Flow(T)
+	include Unspec(M)(T)
 	let mkClos (id, lt, env) = Clos (id, lt, env)
 	let getClos (Clos c) = c
 	let extEnv (env, id, clos) = (id, clos) :: env
@@ -16,7 +18,7 @@ module Flow = struct
 		let (_,c) = List.find (fun (i, _) -> i = id) env in c
 end
 
-module InterpLambda = MakeInterpreter (Flow)
+module InterpLambda = MakeInterpreter (Unspec)
 
 open InterpLambda
 
@@ -28,7 +30,7 @@ let rec string_of_lterm = function
 	| App (lt1, Var id2) -> "(" ^ (string_of_lterm lt1) ^ ") " ^ id2
 	| App (lt1, lt2) ->
 		Printf.sprintf "(%s) (%s)" (string_of_lterm lt1) (string_of_lterm lt2)
-let rec string_of_clos (Flow.Clos (id, lt, env)) =
+let rec string_of_clos (Unspec.Clos (id, lt, env)) =
 	let f acc (id, clos) = acc ^ id ^ " ==> " ^ (string_of_clos clos) ^ " " in
 	Printf.sprintf "(%s, %s, [%s])"
 		id (string_of_lterm lt) (List.fold_left f " " env)
@@ -45,8 +47,8 @@ let rec unfold t env =
 	match t with
 	| Var x -> begin
 		try
-			let Flow.Clos (b, t', env') =
-				try Flow.getEnv (x, env) with _ -> failwith "unfold - getEnv"
+			let Unspec.Clos (b, t', env') =
+				try Unspec.getEnv (x, env) with _ -> failwith "unfold - getEnv"
 			in
 			Lam (b, unfold t' env')
 		with _ -> t
@@ -159,7 +161,7 @@ let () =
 	let lt = factorial $ (mkint 6) in
 	let c = eval e0 lt in
 	let b, t, env =
-		try Flow.getClos c with _ -> failwith "noresult"
+		try Unspec.getClos c with _ -> failwith "noresult"
 	in
 	let ut = unfold (Lam (b, t)) env in
 	let tf = simpl ut 2 in

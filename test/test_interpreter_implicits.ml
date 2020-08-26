@@ -13,9 +13,9 @@ end
 
 module NewFlow = struct
 	include T
-	include Flow(T)
+	include Unspec(Monads.ID)(T)
   let assert_necro b =
-    if not b then raise (Branch_fail "Necro Assertion Error")
+    if not b then M.fail ()
   let litToVal lit = Int lit
   let read (ident, state) = Hashtbl.find state ident
   let write (ident, state, value) =
@@ -23,10 +23,10 @@ module NewFlow = struct
     state
   let isInt = function
     | Int i -> i
-    | _ -> raise (Branch_fail "Not an integer")
+    | _ -> M.fail ()
   let isBool = function
     | Bool b -> b
-    | _ -> raise (Branch_fail "Not a boolean")
+    | _ -> M.fail ()
   let add (a, b) = (a + b)
   let eq (a, b) = assert_necro (a = b)
   let neq (a, b) = assert_necro (a <> b)
@@ -56,25 +56,25 @@ let () =
       If (Var "a",
         Assign ("b", Const 2),
         Assign ("b", Const 4))) in
-  let s = stmt (initial_state ()) t in
+  let s = eval_stmt (initial_state ()) t in
   assert (get_var s "b" = Int 2)
 
 let () =
   let t =
     Plus (Not (Const 42), Equal (Const 18, Const 18)) in
-  let s = expr (initial_state ()) t in
+  let s = eval_expr (initial_state ()) t in
   assert (s = Int 1)
 
 let () =
   let t =
     Equal (Const 0, Not (Const 18)) in
-  let s = expr (initial_state ()) t in
+  let s = eval_expr (initial_state ()) t in
   assert (s = Bool true)
 
 let () =
   let t =
     Equal (Const 1, Not (Equal (Const 42, Const 18))) in
-  let s = expr (initial_state ()) t in
+  let s = eval_expr (initial_state ()) t in
   assert (s = Bool true)
 
 

@@ -5,12 +5,8 @@ open Skeltypes
 (* =====          Parameters & useful functions          ===== *)
 (* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
 
-let collect = ref false
 let tmp = ref "_tmp"
-let list = ref "list"
 let env = ref Skeleton.empty_ss
-let alt x y = if !collect then x else y
-let rand = ref false
 
 let necro_ocaml_keywords =
 	[
@@ -23,7 +19,7 @@ let necro_ocaml_keywords =
 	"private"; "rec"; "sig"; "struct"; "then"; "to"; "true"; "try"; "type"; "val";
 	"virtual"; "when"; "while"; "with" ;
 	(* ocaml generation reserved keywords *)
-	"choose_branch"; "NotImplemented"; "Branch_fail"
+	"NotImplemented"
 	]
 
 (* print a type in the OCaml way (variable are begun with a single quote)
@@ -53,23 +49,13 @@ let rec pp_print_type ff (s: necro_type) =
 						Format.fprintf ff "%a"
 						(Util.print_list ~sep:" * " (fun ff s -> aux true ff s)) l
 					end
-			| Arrow (s1, s2) when (!collect && protect)->
-					Format.fprintf ff "(%a -> %a %s)" (aux true) s1 (aux true) s2 !list
-			| Arrow (s1, s2) when !collect ->
-					Format.fprintf ff "%a -> %a %s" (aux true) s1 (aux true) s2 !list
-			| Arrow (s1, s2) when protect ->
-					Format.fprintf ff "(%a -> %a)" (aux true) s1 (aux false) s2
+			| Arrow (s1, s2) when protect->
+					Format.fprintf ff "(%a, %a) M.arrow" (aux true) s1 (aux true) s2
 			| Arrow (s1, s2) ->
-					Format.fprintf ff "%a -> %a" (aux true) s1 (aux false) s2
+					Format.fprintf ff "(%a, %a) M.arrow" (aux true) s1 (aux false) s2
 		end
 	in
 	aux false ff s
-
-let print_var ff v =
-	Format.fprintf ff "%s" v.tv_name
-
-let comput_interpgen res =
-	res
 
 let rec is_tuple_var p =
 	match p with
@@ -176,23 +162,7 @@ let rec print_term ff =
 			Format.fprintf ff "%s %a" c print_term_protect t
 	| TTuple tl ->
 			Format.fprintf ff "(%a)" (Util.print_list ~sep:", " print_term) tl
-	| TFunc (x, _, s) when not !collect ->
-			let rec aux s =
-				begin match s with
-				| Return (TFunc (y, _, s')) ->
-						let args, body = aux s' in
-						y :: args, body
-				| _ -> [], s
-				end
-			in
-			let args, body = aux s in
-			if args = [] then
-				Format.fprintf ff "@[<v 2>begin function %s ->@,%a@]@,end" x print_skel body
-			else
-				Format.fprintf ff "@[<v 2>begin fun %a ->@,%a@]@,end"
-				(Util.print_list ~sep:" " (fun ff -> Format.fprintf ff "%s")) (x::args)
-				print_skel body
-	| TFunc (x, _, s) ->  (* !collect *)
+	| TFunc (x, _, s) ->
 			Format.fprintf ff "@[<v 2>begin function %s ->@,%a@]@,end" x print_skel s
 	end
 
@@ -203,91 +173,64 @@ and print_term_protect ff t =
 	| _ -> Format.fprintf ff "(%a)" print_term t
 	end
 
+and print_bind_skel ff s =
+	begin match s with
+	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _)->
+			Format.fprintf ff "@,%a@]@," print_skel s
+	| _ -> Format.fprintf ff " %a@] " print_skel s
+	end
+and print_ret_skel ff s =
+	begin match s with
+	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _) ->
+			Format.fprintf ff "@,%a" print_skel s
+	| _ -> Format.fprintf ff " %a" print_skel s
+	end
 and print_skel ff s =
-	if !collect then
-		begin match s with
-		| Return t ->
-				Format.fprintf ff "[%a]" print_term t
-		| Apply (f, _, []) ->
-				Format.fprintf ff "[%s]" f.tv_name
-		| Apply (f, _, a :: q) ->
-				Format.fprintf ff "let* %s = %s %a in %a" !tmp f.tv_name
-				print_term_protect a print_skel (Apply ({tv_name= !tmp;tv_typ=f.tv_typ}, [], q))
-		| LetIn (None, p, s1, s2) ->
-			if is_tuple_var p then
-				Format.fprintf ff "let* %a = %a in@,%a"
-				print_pattern p print_skel s1 print_skel s2
-			else
-				Format.fprintf ff
-				"@[<v 2>begin@,\
-					let* %s = %a in@,\
-					match %s with@,\
-					| @[<v>%a ->@,\
-						%a@]@,\
-					| _ -> []@]@,\
-					end"
-				!tmp print_skel s1 !tmp print_pattern p print_skel s2
-		| LetIn (Some (m, _), p, s1, s2) ->
-				Format.fprintf ff "%s (%a) (function %a ->@,%a)"
-				m print_skel s1 print_pattern p print_skel s2
-		| Branching (_, outs, _) -> 
-				Format.fprintf ff "@[<v 2>begin@,%a@,[]@]@,end"
-					(Format.pp_print_list (fun ff ->
-						Format.fprintf ff "@[<v 2>begin@,%t@]@,end %@"
-					)) (List.map (fun s ff -> Format.fprintf ff "%a" print_skel s) outs)
-		end
-	else
-		begin match s with
-		| Return t -> print_term ff t
-		| Apply (f, _, tl) ->
-				Format.fprintf ff "%s %a" f.tv_name
-				(Util.print_list ~sep:" " (fun ff -> Format.fprintf ff "%a" print_term_protect)) tl
-		| LetIn (Some (m, _), p, s1, s2) ->
-					Format.fprintf ff "%s (%a) (function %a ->@,%a)"
-					m print_skel s1 print_pattern p print_skel s2
-		| LetIn (None, p, s1, s2) ->
-			if is_tuple_var p then
-				Format.fprintf ff "let %a = %a in@,%a"
-				print_pattern p print_skel s1 print_skel s2
-			else if is_exhaustive !env (Skeleton.pattern_typ p) [p] then
-				Format.fprintf ff
-				"@[<v>begin match %a with@,\
-					| @[<v>%a ->\
-						%a@]@,\
-				end@]"
-				print_skel s1 print_pattern p (fun ff s -> match s with
-				 | LetIn _ | Return (TFunc _) ->
-						Format.fprintf ff "@,%a" print_skel s
-				 | _ -> Format.fprintf ff " %a" print_skel s) s2
-			else
-				Format.fprintf ff
-				"@[<v>begin match %a with@,\
-					| @[<v>%a ->\
-						%a@]@,\
-					| _ -> raise (Branch_fail \"\")@,\
-					end\
-					@]"
-				 print_skel s1 print_pattern p (fun ff s -> match s with
-				 | LetIn _ | Return (TFunc _) ->
-						Format.fprintf ff "@,%a" print_skel s
-				 | _ -> Format.fprintf ff " %a" print_skel s) s2
-		| Branching (_, outs, loc) ->
-				match branch_to_match outs with
+	begin match s with
+	| Return t ->
+			Format.fprintf ff "M.ret %a" print_term_protect t
+	| Apply (f, _, []) ->
+			Format.fprintf ff "M.ret %s" f.tv_name
+	| Apply (f, _, a :: q) ->
+			Format.fprintf ff "let* %s = %s %a in@,%a" !tmp f.tv_name
+			print_term_protect a print_skel (Apply ({tv_name= !tmp;tv_typ=f.tv_typ}, [], q))
+	| LetIn (None, p, s1, s2) ->
+		if is_tuple_var p then
+			Format.fprintf ff "@[<v 2>let* %a =%ain%a"
+			print_pattern p print_bind_skel s1
+			print_ret_skel s2
+		else if is_exhaustive !env (Skeleton.pattern_typ p) [p] then
+			Format.fprintf ff
+			"@[<v 2>let* %s =%ain@,@[<v>begin match %s with@,\
+				| @[<v>%a ->\
+					%a@]@,\
+			end@]"
+			!tmp print_bind_skel s1 !tmp print_pattern p print_ret_skel s2
+		else
+			Format.fprintf ff
+			"@[<v 2>begin@,\
+				@[<v 2>let* %s =%ain@,\
+				match %s with@,\
+				| @[<v>%a ->\
+					%a@]@,\
+				| _ -> M.fail ()@]@,\
+				end"
+				(* TODO: don't print M.fail when it's useless *)
+			!tmp print_bind_skel s1 !tmp print_pattern p print_ret_skel s2
+	| LetIn (Some (m, ta), p, s1, s2) ->
+			Format.fprintf ff "let* %s = %a in@,let* %s = %s %s in@,%s (function %a ->@,%a)"
+			!tmp print_skel s1 !tmp m !tmp !tmp print_pattern p print_skel s2
+	| Branching (_, outs, _) ->
+				begin match branch_to_match outs with
 				| Some txt -> Format.fprintf ff "%t" txt
-				| None when not !rand->
-				Format.fprintf ff "begin@,%a@,raise (Branch_fail \"%s\")@,end"
-					(Format.pp_print_list (fun ff ->
-						Format.fprintf ff "@[<v 2>try@,%t@]@,with Branch_fail _ ->"
-					)) (List.map (fun s ff -> Format.fprintf ff "%a" print_skel s) outs)
-					(print_loc loc)
-				| None (* when !rand *) ->
-						Format.fprintf ff "@[<v>choose_branch \"%s\" (@,%a [])@]"
-					(print_loc loc)
-					(Format.pp_print_list (fun ff skel ->
-						Format.fprintf ff "@[<v 2>begin fun () ->@,%a@]@,end ::"
-						print_skel skel
-					)) outs
+				| None ->
+						Format.fprintf ff "@[<v 2>begin@,@[<v 2>M.branch [@,%a ]@]@]@,end"
+							(Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff " ;@,")
+							(fun ff ->
+								Format.fprintf ff "@[<v 2>(fun () ->@,%t)@]"
+							)) (List.map (fun s ff -> Format.fprintf ff "%a" print_skel s) outs)
 				end
+	end
 
 and branch_to_match outs =
 	let rec aux a s1 =
@@ -317,22 +260,19 @@ and branch_to_match outs =
 					begin match disjoint (), exhaustive () with
 					| true, true ->
 						Some (fun ff ->
-							Format.fprintf ff "@[<v 0>begin match %a with@,%a@,end@]"
-							print_skel s1
+							Format.fprintf ff "@[<v 0>let* %s = %a in@,begin match %s with@,%a@,end@]"
+							!tmp print_skel s1 !tmp
 							(Format.pp_print_list (fun ff (pat, skel) ->
 								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
-							((fun ff s -> match s with
-									 | LetIn _ | Return (TFunc _) ->
-											Format.fprintf ff "@,%a" print_skel s
-									 | _ -> Format.fprintf ff " %a" print_skel s)) skel)) patterns)
+							print_ret_skel skel)) patterns)
 					| true, false ->
 						Some (fun ff ->
-							Format.fprintf ff "@[<v 0>begin match %a with@,%a@,| _ -> raise \
-							(Branch_fail \"\")@,end@]"
-							print_skel s1
+							Format.fprintf ff "@[<v 0>let* %s = %a in@,\
+							begin match %s with@,%a@,| _ -> M.fail ()@,end@]"
+							!tmp print_skel s1 !tmp
 							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a -> %a@]" print_pattern pat
-							print_skel skel)) patterns
+								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
+							print_ret_skel skel)) patterns
 							)
 					| _ -> None
 					end
@@ -343,13 +283,10 @@ and branch_to_match outs =
 
 
 
-
 (* Print signature only when necessary (if the term is polymorphic) *)
 let print_poly_sig ta (ty: necro_type) ff =
 	let ta_print ff ty_print =
-		match ta with
-		| [] -> ()
-		| _ ->
+		if ta <> [] then
 				Format.fprintf ff ": %a. %t" (Util.print_list ~sep:" "
 				(fun ff -> Format.fprintf ff "'%s")) ta ty_print
 	in
@@ -371,71 +308,68 @@ let print_term_definitions ff env =
 		(print_poly_sig ta ty) print_term t
 	in
 	if spec_terms <> [] then
-		Format.fprintf ff "@[<v 2>let rec %a@]"
+		Format.fprintf ff "\n@,@[<v 2>let rec %a@]"
 			(Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff "@]\n@,@[<v 2>and ")
 					print_term_def) spec_terms
 
-(* if [all], prints [type t] for all types and type aliases.
- * If [not all], then prints only the unspecified types *)
-let print_type_decls all ff env =
+(* Prints [type t] for all unspecified types *)
+let print_type_decls ff env =
 	(* prints the type's name with "type " before it *)
 	let print_one_type_declaration ff s =
 		begin match s with
 		| Product _ | Variable _ | Alias _ | Arrow _ ->
 				assert false
 		| Base (s, _, []) ->
-				Format.fprintf ff "type %s" s
+				Format.fprintf ff "@,type %s" s
 		| Base (s, _, _ :: []) ->
-				Format.fprintf ff "type _ %s" s
+				Format.fprintf ff "@,type _ %s" s
 		| Base (s, _, args) ->
 				let print_one ff _ = Format.fprintf ff "_" in
-				Format.fprintf ff "type (%a) %s"
+				Format.fprintf ff "@,type (%a) %s"
 				(Util.print_list ~sep:", " print_one) args s
 		end
 	in
 	let ts =
-		if all then
-			(env.ss_types
-			|> Util.SMap.bindings
-			|> List.map (fun (x, (_, y, z)) -> y))
-			@
-			(env.ss_aliases
-			|> Util.SMap.bindings
-			|> List.map (fun (n, (_, ta, ty)) ->
-					Base (n, true, List.map (fun x -> Variable x) ta)))
-		else
-			env.ss_types
-			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
-			|> Util.SMap.bindings
-			|> List.map (fun (x, (_, y, z)) -> y)
+		env.ss_types
+		|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
+		|> Util.SMap.bindings
+		|> List.map (fun (x, (_, y, z)) -> y)
 	in
-	Format.pp_print_list (print_one_type_declaration) ff ts
-
-(* Prints the signature of a term *)
-let print_term_sig ff name ty =
-	Format.fprintf ff "val %s: %a" name pp_print_type ty
-
-let print_term_not_implemented ff name ty =
-	Format.fprintf ff "let %s _ = raise (NotImplemented \"%s\")" name name
+	Util.print_list print_one_type_declaration ff ts
 
 
 (* if [all], prints [val t: ty] for all terms. If [not all], then prints only the
  * unspecified terms *)
-let print_term_signatures all ff env =
-	env.ss_terms
-	|> (if not(all) then Util.SMap.filter (fun a (_, _, _, t) -> t = None) else
-		Util.id)
-	|> Util.SMap.bindings
-	|> Format.pp_print_list (fun ff (name, (_, _, ty,_)) -> print_term_sig ff name ty) ff
+let print_term_signatures ff env =
+	(* Prints the signature of a term *)
+	let print_term_sig ff name ty =
+		Format.fprintf ff "val %s: %a" name pp_print_type ty
+	in
+	let all_sigs =
+		env.ss_terms
+		|> Util.SMap.filter (fun a (_, _, _, t) -> t = None)
+		|> Util.SMap.bindings
+	in
+	if all_sigs <> [] then
+			Format.fprintf ff "\n@,%a"
+			(Format.pp_print_list (fun ff (name, (_, _, ty,_)) ->
+				print_term_sig ff name ty)) all_sigs
 
 let print_terms_not_implemented ff env =
-	env.ss_terms
-	|> Util.SMap.filter (fun a (_, _, ty, t) ->
-			begin match t, Skeleton.unalias ty with
-			| None, Arrow _ -> true | _ -> false
-			end)
-	|> Util.SMap.bindings
-	|> Format.pp_print_list (fun ff (name, (_, _, ty,_)) -> print_term_not_implemented ff name ty) ff
+	let print_term_not_implemented ff (name, _) =
+		Format.fprintf ff "let %s _ = raise (NotImplemented \"%s\")" name name
+	in
+	let vals =
+		env.ss_terms
+		|> Util.SMap.filter (fun a (_, _, ty, t) ->
+				begin match t, Skeleton.unalias ty with
+				| None, Arrow _ -> true | _ -> false
+				end)
+		|> Util.SMap.bindings
+	in
+	if vals <> [] then
+	Format.fprintf ff "\n@,%a"
+		(Format.pp_print_list print_term_not_implemented) vals
 
 let print_specified_types ff ss =
 	let print_constructor ff c =
@@ -453,13 +387,14 @@ let print_specified_types ff ss =
 		end
 	in
 	let const = Skeleton.get_constructors_by_type ss in
-	if const = [] then () else
-	Format.fprintf ff "type %a"
+	if const <> [] then
+	Format.fprintf ff "\n@,type %a"
 		(Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff "@,and ") (fun
 			ff (base_type, const) ->
 				Format.fprintf ff "%a =@,%a" pp_print_type base_type
 						(Format.pp_print_list print_constructor) const
 			)) const
+
 let print_aliases ff ss =
 	let empty = Util.SMap.is_empty ss.ss_types in
 	begin match empty with
@@ -471,110 +406,71 @@ let print_aliases ff ss =
 				pp_print_type (Base (name, true, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ss.ss_aliases)
 	| false ->
-		Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff "@,") (fun
+		Format.pp_print_list ~pp_sep:(fun ff () -> ()) (fun
 			ff (name, (_, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
-				Format.fprintf ff "and %a = %a"
+				Format.fprintf ff "@,and %a = %a"
 				pp_print_type (Base (name, true, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ss.ss_aliases)
 	end
 
-(* writes the FLOW module type *)
-let print_flow_module_type ff =
-	Format.fprintf ff "@[<v 2>module type FLOW = sig@,%s\n@,%a@,%a\n@,%a@]@,end"
+(* writes the UNSPEC module type *)
+let print_unspec_module_type ff =
+	Format.fprintf ff "@[<v 2>module type UNSPEC = sig@,%s@,%s%a%a%a@]@,end"
+		"module M: MONAD"
 		"include TYPES"
 		print_specified_types !env
 		print_aliases !env
-		(print_term_signatures false) !env
+		print_term_signatures !env
 
 (* writes the INTERPRETER module type *)
 let print_types_module_type ff =
-	Format.fprintf ff "@[<v 2>module type TYPES = sig@,%a@]@,end"
-		(print_type_decls false) !env
+	Format.fprintf ff "@[<v 2>module type TYPES = sig%a@]@,end"
+		print_type_decls !env
+
+let print_monad_module_type ff =
+	Format.fprintf ff
+{|module type MONAD = sig
+  type 'a t
+  type ('a, 'b) arrow = 'a -> 'b t
+  val ret: 'a -> 'a t
+  val branch: (unit, 'a) arrow list -> 'a t
+  val bind: 'a t -> ('a -> 'b t) -> 'b t
+  val fail: unit -> 'a t
+end|}
 
 (* writes the MakeInterpreter functor *)
 let print_makeinterpreter_functor ff =
-	let let_star ff =
-		Format.fprintf ff
-			"let rec union_two l = function@,\
-				| [] -> l@,\
-				| a :: q -> (if List.mem a l then (fun x -> x) else (List.cons a)) (union_two l q)@,\
-			let rec union = function@,\
-				| [] -> []@,\
-				| a :: q -> union_two a (union q)@,\
-			let ( let* ) l f = union (List.map f l)\n@,"
-	in
-	let rand_choose ff =
-		Format.fprintf ff
-		"@[<v 2>let rec extract pick l =@,\
-		begin match pick, l with@,\
-		| _, [] -> assert false@,\
-		| n, a :: q when n < 0 -> assert false@,\
-		| 0, a :: q -> a, q@,\
-		@[<v 4>| n, a :: q ->@,\
-				let extracted, rest = extract (n - 1) q in@,\
-				extracted, a :: rest@]@,\
-		end@]@,\
-	@[<v 2>let random_pick =@,\
-		begin function@,\
-		| [] -> assert false@,\
-		@[<v 4>| l -> @,\
-				let len = List.length l in@,\
-				let () = Random.self_init () in@,\
-				let pick = Random.int len in@,\
-				extract pick l@]@,\
-		end@]@,\
-	@[<v 2>let rec choose_branch error =@,\
-		begin function@,\
-		| [] -> raise (Branch_fail error)@,\
-		@[<v 4>| l ->@,\
-				let (branch, rest) = random_pick l in@,\
-				@[<v 2>begin try@,\
-					branch ()@]@,\
-				@[<v 2>with Branch_fail _ ->@,\
-					choose_branch error rest@]@,\
-				end@]@,\
-		end@]@, "
-	in
 	Format.fprintf ff
-		"@[<v 2>module MakeInterpreter (F : FLOW) = struct@,include F\n@,%t%a@]@,end"
-		(if !collect then let_star else if !rand then rand_choose else (fun ff -> ()))
+		 "@[<v 2>module MakeInterpreter (F : UNSPEC) = struct@,include F@,let ( let* ) = M.bind%a@]@,end"
 		print_term_definitions !env
 
-let print_flow_functor ff =
-	Format.fprintf ff "@[<v 2>module Flow (T:TYPES) = struct@,%s@,%s\n@,%a@,%a\n@,%a@]@,end@,"
+let print_unspec_functor ff =
+	Format.fprintf ff "@[<v 2>module Unspec (M:MONAD) (T:TYPES) = struct@,%s@,%s@,%s%a%a%a@]@,end@,"
 		"exception NotImplemented of string"
 		"include T"
+		"module M = M"
 		print_specified_types !env
 		print_aliases !env
-		(print_terms_not_implemented) !env
+		print_terms_not_implemented !env
 
 
 (* writes the interpreter generator modules to stdout *)
 let generate_interpreter sem: string =
+	let ok x =
+		not (List.mem x necro_ocaml_keywords) &&
+		not (Skeleton.all_variables_ss sem x) &&
+		not (is_keyword x)
+	in
+	let () = tmp := Util.fresh ok !tmp in
 	let sem = Skeleton.protect_ss necro_ocaml_keywords sem in
 	let () = env := sem in
 	let ff = Format.str_formatter in
 	let () = Format.fprintf ff
-		"@[<v>%s@,%t\n@,%t\n@,%t\n@,%t@]@."
-		(alt "" "exception Branch_fail of string\n")
-		print_types_module_type
-		print_flow_module_type
-		print_makeinterpreter_functor
-		print_flow_functor
+		"@[<v>%t\n@,%t\n@,%t\n@,%t\n@,%t@]@."
+		print_types_module_type (* module type TYPES *)
+		print_monad_module_type (* module type MONAD *)
+		print_unspec_module_type (* module type UNSPEC *)
+		print_makeinterpreter_functor (* module MakeInterpreter (F: UNSPEC) *)
+		print_unspec_functor (* module Unspec (M:MONAD) (T:TYPES) *)
 	in Format.flush_str_formatter ()
-
-let generate_interpreter_list env: string =
-	let () = collect := true in
-	let ok x =
-		not (List.mem x necro_ocaml_keywords) &&
-		not (Skeleton.all_variables_ss env x) &&
-		not (is_keyword x)
-	in
-	let () = tmp := Util.fresh ok !tmp in
-	let () = if Util.SMap.mem "list" env.ss_types then list:= "List.t" in
-	generate_interpreter env
-
-let generate_interpreter_rand env: string =
-	let () = rand := true in
-	generate_interpreter env

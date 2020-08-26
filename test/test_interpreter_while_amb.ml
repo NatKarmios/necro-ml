@@ -15,9 +15,9 @@ module T = struct
   type state = value SMap.t
 end
 
-module Flow = struct
+module Unspec = struct
 	include T
-	include Flow(T)
+	include Unspec(Monads.List)(T)
   module S = struct
     type 'a t = state -> 'a * state
     let bind x f =
@@ -51,10 +51,10 @@ module Flow = struct
     [SMap.add ident value state]
 end
 
-module InterpWhile = MakeInterpreter (Flow)
+module InterpWhile = MakeInterpreter (Unspec)
 
 open T
-open Flow
+open Unspec
 open InterpWhile
 
 let initial_state = SMap.empty
@@ -73,7 +73,7 @@ let () =
       Assign ("b", Plus (Var "a", Var "a"))
     )
   in
-  let s = stmt (initial_state, t) in
+  let s = eval_stmt (initial_state, t) in
   let b = List.map (SMap.find_opt "b") s in
   assert(has_values [Some (Int 4); Some (Int 6)] b)
 

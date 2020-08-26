@@ -2,6 +2,8 @@ open Miniml
 
 module SMap = Map.Make(String)
 
+module M = Monads.ID
+
 module rec T : (sig
 	type ident = string
 	type lit = int
@@ -10,8 +12,8 @@ module rec T : (sig
 	type env = value SMap.t
 	and value =
 		| VInt of int
-		| VClos of ident * Flow(T).mlterm * env
-		| VConstr of string * value Flow(T).list
+		| VClos of ident * Unspec(M)(T).mlterm * env
+		| VConstr of string * value Unspec(M)(T).list
 end)
 = struct
 	type ident = string
@@ -21,17 +23,16 @@ end)
 	type env = value SMap.t
 	and value =
 		| VInt of int
-		| VClos of ident * Flow(T).mlterm * env
-		| VConstr of string * value Flow(T).list
+		| VClos of ident * Unspec(M)(T).mlterm * env
+		| VConstr of string * value Unspec(M)(T).list
 end
 
 module F = struct
 	include T
-	module FF = Flow(T)
-	include FF
+	include Unspec(M)(T)
 	let rec of_list = function
-		| [] -> FF.Nil
-		| a::q -> FF.Cons (a, of_list q)
+		| [] -> Nil
+		| a::q -> Cons (a, of_list q)
 	let rec to_list = function
 		| Nil -> []
 		| Cons (a, q) -> a :: to_list q
@@ -42,27 +43,27 @@ module F = struct
 	let mkInt d = VInt d
 	let getClos = function
 		| VClos (x, t, e) -> (x, t, e)
-		| _ -> raise (Branch_fail "Not a closure")
+		| _ -> M.fail ()
 	let getInt = function
 		| VInt i -> i
-		| _ -> raise (Branch_fail "Not an integer")
+		| _ -> M.fail ()
 	let mkConstr (name, l) = VConstr (name, l)
 	let isConstrWithName (name, v) = match v with
 		| VConstr (n, l) when n = name -> l
-		| _ -> raise (Branch_fail ("Not a constructor with name " ^ name))
+		| _ -> M.fail ()
 	let isNotConstrWithName (name, v) = match v with
 		| VConstr (n, _) when n = name ->
-				raise (Branch_fail ("Is a constructor with name" ^ name))
+				M.fail ()
 		| _ -> ()
 
 	let extEnv (env, x, v) = SMap.add x v env
 	let getEnv (x, env) = try SMap.find x env with _ ->
-		raise (Branch_fail (x ^ " not found in the environment"))
+		M.fail ()
 
 	let intOfLit v = v
 	let plus (x, y) = (x + y)
-	let isZero d = if d <> 0 then raise (Branch_fail "Is Not Zero")
-	let isNotZero d = if d = 0 then raise (Branch_fail "Is Zero")
+	let isZero d = if d <> 0 then M.fail ()
+	let isNotZero d = if d = 0 then M.fail ()
 
 	let match_failure () = failwith "Match failure"
 end

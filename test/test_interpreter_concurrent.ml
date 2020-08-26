@@ -13,9 +13,9 @@ module T = struct
   type state = value SMap.t
 end
 
-module Flow = struct
+module Unspec = struct
 	include T
-	include Flow(T)
+	include Unspec(Monads.List)(T)
   let litToVal lit = [Int lit]
   let read (ident, state) = Option.to_list (SMap.find_opt ident state)
   let write (ident, state, value) =
@@ -33,16 +33,16 @@ module Flow = struct
   let neg b = [Bool (not b)]
 end
 
-module InterpWhile = MakeInterpreter (Flow)
+module InterpWhile = MakeInterpreter (Unspec)
 
 open T
-open Flow
+open Unspec
 open InterpWhile
 
 let ( let* ) l f = List.flatten (List.map f l)
 let rec has_values l1 l2 = match l1 with
   | [] -> l2 = []
-  | a :: q -> 
+  | a :: q ->
       List.mem a l2 &&
       has_values q (List.filter (fun x -> x <> a) l2)
 
@@ -58,7 +58,7 @@ let () =
     )
   in
   let s =
-    let* s1 = stmt (SMap.empty) in
+    let* s1 = eval_stmt (SMap.empty) in
     s1 t
   in
   let x = List.map (SMap.find_opt "x") s in
@@ -95,7 +95,7 @@ let () =
       )
     )))
   in
-  let fact = 
+  let fact =
     let rec aux accu = function
       | 0 -> accu
       | n -> aux (n * accu) (n - 1)
@@ -103,7 +103,7 @@ let () =
     aux 1
   in
   let s =
-    let* s1 = stmt (SMap.empty) in
+    let* s1 = eval_stmt (SMap.empty) in
     s1 t
   in
   let x = List.map (SMap.find_opt "fact") s in
@@ -117,7 +117,7 @@ let () =
     )
   in
   let s =
-    let* s1 = stmt (SMap.empty) in 
+    let* s1 = eval_stmt (SMap.empty) in
     s1 t
   in
   let x = List.map (SMap.find_opt "shared") s in

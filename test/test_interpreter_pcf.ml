@@ -2,6 +2,8 @@ open Pcf
 
 module SMap = Map.Make(String)
 
+module M = Monads.ID
+
 module rec T : sig
 		type ident = string
 		type lit = int
@@ -9,7 +11,7 @@ module rec T : sig
 		type env = value SMap.t
 		and value =
 			| Int of int
-			| Clos of ident * Flow(T).lterm * env
+			| Clos of ident * Unspec(M)(T).lterm * env
 	end =
 	struct
   type ident = string
@@ -18,32 +20,32 @@ module rec T : sig
   type env = value SMap.t
   and value =
     | Int of int
-    | Clos of ident * Flow(T).lterm * env
+    | Clos of ident * Unspec(M)(T).lterm * env
 end
 
 module F = struct
 	include T
-	include Flow(T)
+	include Unspec(M)(T)
   let initial_env () = SMap.empty
 
   let mkClos (x, t, e) = Clos (x, t, e)
   let mkInt d = Int d
   let getClos = function
-    | Int _ -> raise (Branch_fail "Not a closure")
+    | Int _ -> M.fail ()
     | Clos (x, t, e) -> (x, t, e)
   let getInt = function
     | Int i -> i
-    | Clos _ -> raise (Branch_fail "Not an integer")
+    | Clos _ -> M.fail ()
 
   let extEnv (env, x, v) = SMap.add x v env
   let getEnv (x, env) =
     try SMap.find x env
-    with _ -> raise (Branch_fail (x ^ " not found in the environment"))
+    with _ -> M.fail ()
 
   let intOfLit v = v
   let plus (x, y) = x + y
-  let isZero d = if d <> 0 then raise (Branch_fail "Not zero")
-  let isNotZero d = if d = 0 then raise (Branch_fail "Is zero")
+  let isZero d = if d <> 0 then M.fail ()
+  let isNotZero d = if d = 0 then M.fail ()
 end
 
 module I = MakeInterpreter(F)

@@ -14,52 +14,40 @@ let wrap2 f x y = wrap (wrap f x) y
 (* Print usage in stderr and exit *)
 let usage () =
 	Printf.eprintf
-	("Usage: %s [-c/--collect/-r/--random] <file.sk> [-o/--output <file.ml>]\n\
+	("Usage: %s <file.sk> [-o/--output <file.ml>]\n\
 	If no output file is given, the result will be written in stdout.\n")
 	Sys.argv.(0);
 	exit 1
 
-type semantics = | Collect | Random | Natural
-
 let parse_options l =
-	let parse_output l =
-		begin match l with
-		| [] -> None
-		| ("-o" as s) :: q | ("--output" as s) :: q ->
-				begin match q with
-				| [] ->
-						failwith (s ^ " expects the name of an output file")
-				| out :: [] ->
-						Some out
-				| _ :: "-o" :: _ | _ :: "--output" :: _ ->
-						failwith "Multiple output files given"
-				| _ -> usage ()
-				end
-		| _ -> usage ()
-		end
-	in
 	begin match l with
-	| "-c" :: file :: q | "--collect" :: file :: q ->
-			 Generator.generate_interpreter_list, file, parse_output q
-	| "-r" :: file :: q | "--random" :: file :: q ->
-			Generator.generate_interpreter_rand, file, parse_output q
-	| file :: q ->
-			Generator.generate_interpreter, file, parse_output q
-	| [] -> usage ()
+	| [] -> None
+	| ("-o" as s) :: q | ("--output" as s) :: q ->
+			begin match q with
+			| [] ->
+					failwith (s ^ " expects the name of an output file")
+			| out :: [] ->
+					Some out
+			| _ :: "-o" :: _ | _ :: "--output" :: _ ->
+					failwith "Multiple output files given"
+			| _ -> usage ()
+			end
+	| _ -> usage ()
 	end
 
 
 
 (** MAIN FUNCTION **)
 let () =
-	let generator, filename, output_file =
+	let filename, output_file =
 		begin match Array.to_list Sys.argv with
 		| [] -> assert false
-		| _ :: q -> parse_options q
+		| _ :: file :: q -> file, parse_options q
+		| _ -> usage ()
 		end
 	in
 	let sem = Necro.parse_and_type filename in
-	let result = wrap generator sem in
+	let result = wrap Generator.generate_interpreter sem in
 	begin match output_file with
 	| None -> print_endline result
 	| Some f ->

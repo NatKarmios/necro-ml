@@ -11,9 +11,9 @@ module T = struct
   type state = (ident, value) Hashtbl.t
 end
 
-module Flow = struct
+module Unspec = struct
 	include T
-	include Flow(T)
+	include Unspec(Monads.ID)(T)
   let o_to_v = function
     | Option.Some s -> Some s
     | Option.None -> None
@@ -40,9 +40,9 @@ module Flow = struct
 end
 
 
-module InterpWhile = MakeInterpreter (Flow)
+module InterpWhile = MakeInterpreter (Unspec)
 
-open Flow
+open Unspec
 open InterpWhile
 
 let initial_state () = Hashtbl.create 29
@@ -59,5 +59,5 @@ let () =
     )
   in
   let s = stmt (initial_state(), t) in
-  assert(Flow.read ("x", get s) = Some (Int 0))
+  assert(Unspec.read ("x", get s) = Some (Int 0))
 

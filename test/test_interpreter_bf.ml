@@ -1,7 +1,7 @@
 open Brainfuck
 
-module Flow = struct
-	include Flow(struct end)
+module Unspec = struct
+	include Unspec(Monads.ID)(struct end)
 	let bit_of_int = function
 		| 0 -> Zero
 		| 1 -> One
@@ -46,9 +46,9 @@ module Flow = struct
 		o := String.concat "" [!o ; String.make 1 c];
 end
 
-module Interp = MakeInterpreter (Flow)
+module Interp = MakeInterpreter (Unspec)
 
-open Flow
+open Unspec
 open Interp
 
 
