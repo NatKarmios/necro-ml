@@ -1,0 +1,49 @@
+opam-version: "2.0.2"
+
+name: "necroml"
+
+version: "0.1"
+
+maintainer: "Louis Noizet <louis.noizet@irisa.fr>"
+
+authors: [
+  "Louis Noizet <louis.noizet@irisa.fr>"
+  "Alan Schmitt <alan.schmitt@inria.fr>"
+]
+
+homepage: "https://gitlab.inria.fr/skeletons/necro-ml"
+
+bug-reports: "https://gitlab.inria.fr/skeletons/necro-ml/-/issues"
+
+license: "BSD 3-clause"
+
+dev-repo: "git@gitlab.inria.fr:skeletons/necro-ml.git"
+
+build: [
+       ["autoconf"]
+       ["./configure"]
+       [make]
+]
+
+install: [
+         [make "opam_install_necroml"]
+]
+
+remove: [
+	["autoconf"]
+       	["./configure"]
+	[make "opam_remove_necroml"]
+]
+
+depends: [
+  "conf-autoconf"
+  "ocamlfind"
+  "menhir"
+  "ocaml" {>= "4.09.0"}
+  "necrolib"
+]
+
+url {
+ src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v0.1/necro-ml-v0.1.tar.gz"
+ checksum: "md5=ea6ba204329cd7c1d0a5a2901ea44a91"
+}
