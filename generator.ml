@@ -495,21 +495,24 @@ let print_aliases ff ss =
 
 (* writes the UNSPEC module type *)
 let print_unspec_module_type ff =
-	Format.fprintf ff "@[<v 2>module type UNSPEC = sig@,%s@,%s%a%a%a@]@,end"
+	Format.fprintf ff "(** All types, and the unspecified terms *)@,\
+		@[<v 2>module type UNSPEC = sig@,%s@,%s%a%a%a@]@,end"
 		"module M: MONAD"
 		"include TYPES"
 		(print_specified_types ~comm:true) !env
 		print_aliases !env
 		print_term_signatures !env
 
-(* writes the INTERPRETER module type *)
+(* writes the TYPES module type *)
 let print_types_module_type ff =
-	Format.fprintf ff "@[<v 2>module type TYPES = sig%a@]@,end"
+	Format.fprintf ff "(** The unspecified types *)@,\
+		@[<v 2>module type TYPES = sig%a@]@,end"
 		print_type_decls !env
 
 let print_monad_module_type ff =
 	Format.fprintf ff
-{|module type MONAD = sig
+{|(** The interpretation monad *)
+module type MONAD = sig
   type 'a t
   type ('a, 'b) arrow = 'a -> 'b t
   val ret: 'a -> 'a t
@@ -521,11 +524,15 @@ end|}
 (* writes the MakeInterpreter functor *)
 let print_makeinterpreter_functor ff =
 	Format.fprintf ff
-		 "@[<v 2>module MakeInterpreter (F : UNSPEC) = struct@,include F@,let ( let* ) = M.bind%a@]@,end"
+		"(** Module defining the specified terms *)@,\
+		@[<v 2>module MakeInterpreter (F : UNSPEC) = struct@,\
+		include F@,let ( let* ) = M.bind%a@]@,end"
 		print_term_definitions !env
 
 let print_unspec_functor ff =
-	Format.fprintf ff "@[<v 2>module Unspec (M:MONAD) (T:TYPES) = struct@,%s@,%s@,%s%a%a%a@]@,end@,"
+	Format.fprintf ff
+		"(** A default instantiation *)@,\
+		@[<v 2>module Unspec (M:MONAD) (T:TYPES) = struct@,%s@,%s@,%s%a%a%a@]@,end@,"
 		"exception NotImplemented of string"
 		"include T"
 		"module M = M"
