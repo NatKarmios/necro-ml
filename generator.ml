@@ -223,7 +223,7 @@ and print_skel ff s =
 	| LetIn (Some (m, ta), p, s1, s2) ->
 			Format.fprintf ff "let* %s = %a in@,let* %s = %s %s in@,%s (function %a ->@,%a)"
 			!tmp print_skel s1 !tmp m !tmp !tmp print_pattern p print_skel s2
-	| Branching (_, outs, _) ->
+	| Branching (_, outs) ->
 				begin match branch_to_match outs with
 				| Some txt -> Format.fprintf ff "%t" txt
 				| None ->
