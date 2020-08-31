@@ -14,6 +14,20 @@ module List = struct
   let bind l f = union (List.map f l)
 end
 
+module Cont = struct
+  type fcont = unit -> unit
+  type 'a cont = 'a -> fcont -> unit
+  type 'a t = 'a cont -> fcont -> unit
+  type ('a, 'b) arrow = 'a -> 'b t
+  let ret (x: 'a) = fun (k:'a cont) fcont -> k x fcont
+  let bind (x: 'a t) (f: 'a -> 'b t) = fun k fcont -> x (fun v fcont' -> f v k fcont') fcont
+  let fail () = fun k fcont -> fcont ()
+  let rec branch l = fun k fcont ->
+    match l with
+    | [] -> fcont ()
+    | b :: bs ->
+      (b ()) k (fun () -> branch bs k fcont)
+end
 
 module ID = struct
 	exception Branch_fail
