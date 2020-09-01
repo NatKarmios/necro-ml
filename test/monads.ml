@@ -29,6 +29,21 @@ module Cont = struct
       (b ()) k (fun () -> branch bs k fcont)
 end
 
+module ContPoly = struct
+  type 'b fcont = unit -> 'b
+  type ('a,'b) cont = 'a -> 'b fcont -> 'b
+  type 'a t = {cont: 'b. (('a,'b) cont -> 'b fcont -> 'b)}
+  type ('a, 'b) arrow = 'a -> 'b t
+  let ret (x: 'a) = { cont= fun k fcont -> k x fcont }
+  let bind (x: 'a t) (f: 'a -> 'b t) : 'b t =
+    { cont = fun k fcont -> x.cont (fun v fcont' -> (f v).cont k fcont') fcont }
+  let fail () = { cont = fun k fcont -> fcont () }
+  let rec branch l = { cont = fun k fcont ->
+    match l with
+    | [] -> fcont ()
+    | b :: bs -> (b ()).cont k (fun () -> (branch bs).cont k fcont) }
+end
+
 module ID = struct
 	exception Branch_fail
 	type 'a t = 'a
