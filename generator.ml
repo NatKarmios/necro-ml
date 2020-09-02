@@ -194,6 +194,8 @@ and print_skel ff s =
 			Format.fprintf ff "M.ret %a" print_term_protect t
 	| Apply (f, _, []) ->
 			Format.fprintf ff "M.ret %s" f.tv_name
+	| Apply (f, _, a :: []) ->
+			Format.fprintf ff "%s %a" f.tv_name print_term_protect a
 	| Apply (f, _, a :: q) ->
 			Format.fprintf ff "let* %s = %s %a in@,%a" !tmp f.tv_name
 			print_term_protect a print_skel (Apply ({tv_name= !tmp;tv_typ=f.tv_typ}, [], q))
