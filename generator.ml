@@ -166,7 +166,7 @@ let rec print_term ff =
 	| TTuple tl ->
 			Format.fprintf ff "(%a)" (Util.print_list ~sep:", " print_term) tl
 	| TFunc (x, _, s) ->
-			Format.fprintf ff "@[<v 2>begin function %s ->@,%a@]@,end" x print_skel s
+			Format.fprintf ff "begin function %s ->@,@[<v 2>  %a@]@,end" x print_skel s
 	end
 
 and print_term_protect ff t =
@@ -178,13 +178,13 @@ and print_term_protect ff t =
 
 and print_bind_skel ff s =
 	begin match s with
-	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _)->
+	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _ :: _) | Branching _ ->
 			Format.fprintf ff "@,%a@]@," print_skel s
 	| _ -> Format.fprintf ff " %a@] " print_skel s
 	end
 and print_ret_skel ff s =
 	begin match s with
-	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _) ->
+	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _ :: _) | Branching _ ->
 			Format.fprintf ff "@,%a" print_skel s
 	| _ -> Format.fprintf ff " %a" print_skel s
 	end
@@ -201,9 +201,9 @@ and print_skel ff s =
 			print_term_protect a print_skel (Apply ({tv_name= !tmp;tv_typ=f.tv_typ}, [], q))
 	| LetIn (None, p, s1, s2) ->
 		if is_tuple_var p then
-			Format.fprintf ff "@[<v 2>let* %a =%ain%a"
+			Format.fprintf ff "@[<v 2>let* %a =%ain@,%a"
 			print_pattern p print_bind_skel s1
-			print_ret_skel s2
+			print_skel s2
 		else if is_exhaustive !env (Skeleton.pattern_typ p) [p] then
 			Format.fprintf ff
 			"@[<v 2>let* %s =%ain@,@[<v>begin match %s with@,\
@@ -212,19 +212,17 @@ and print_skel ff s =
 			end@]"
 			!tmp print_bind_skel s1 !tmp print_pattern p print_ret_skel s2
 		else
+			(* FIXME *)
 			Format.fprintf ff
-			"@[<v 2>begin@,\
-				@[<v 2>let* %s =%ain@,\
-				match %s with@,\
-				| @[<v>%a ->\
-					%a@]@,\
-				| _ -> M.fail ()@]@,\
-				end"
-				(* TODO: don't print M.fail when it's useless *)
+			"@[<v 2>let* %s =%ain@,\
+				@[<v>begin match %s with@,\
+				| @[<v>%a ->%a@]@,\
+				| _ -> M.fail ()@,\
+				end@]"
 			!tmp print_bind_skel s1 !tmp print_pattern p print_ret_skel s2
 	| LetIn (Some (m, ta), p, s1, s2) ->
-			Format.fprintf ff "let* %s = %a in@,let* %s = %s %s in@,%s (function %a ->@,%a)"
-			!tmp print_skel s1 !tmp m !tmp !tmp print_pattern p print_skel s2
+			Format.fprintf ff "@[<v 2>let* %s = %ain@,let* %s = %s %s in@,%s (function %a ->@,%a)"
+			!tmp print_bind_skel s1 !tmp m !tmp !tmp print_pattern p print_skel s2
 	| Branching (_, outs) ->
 				begin match branch_to_match outs with
 				| Some txt -> Format.fprintf ff "%t" txt
@@ -264,16 +262,16 @@ and branch_to_match outs =
 					begin match disjoint (), exhaustive () with
 					| true, true ->
 						Some (fun ff ->
-							Format.fprintf ff "@[<v 0>let* %s = %a in@,begin match %s with@,%a@,end@]"
-							!tmp print_skel s1 !tmp
+							Format.fprintf ff "@[<v 0>@[<v 2>let* %s =%ain@,begin match %s with@,%a@,end@]"
+							!tmp print_bind_skel s1 !tmp
 							(Format.pp_print_list (fun ff (pat, skel) ->
 								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
 							print_ret_skel skel)) patterns)
 					| true, false ->
 						Some (fun ff ->
-							Format.fprintf ff "@[<v 0>let* %s = %a in@,\
-							begin match %s with@,%a@,| _ -> M.fail ()@,end@]"
-							!tmp print_skel s1 !tmp
+							Format.fprintf ff "@[<v 2>let* %s =%ain@,\
+							begin match %s with@,%a@,| _ -> M.fail ()@,end"
+							!tmp print_bind_skel s1 !tmp
 							(Format.pp_print_list (fun ff (pat, skel) ->
 								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
 							print_ret_skel skel)) patterns
@@ -555,7 +553,9 @@ let generate_interpreter sem: string =
 	let () = env := sem in
 	let ff = Format.str_formatter in
 	let () = Format.fprintf ff
-		"@[<v>%t\n@,%t\n@,%t\n@,%t\n@,%t@]@."
+		"%s\n@[<v>%t\n@,%t\n@,%t\n@,%t\n@,%t@]@."
+"(** This file was automatically generated using necroml
+    See https://gitlab.inria.fr/skeletons/necro-ml/ for more informations *)"
 		print_types_module_type (* module type TYPES *)
 		print_monad_module_type (* module type MONAD *)
 		print_unspec_module_type (* module type UNSPEC *)
