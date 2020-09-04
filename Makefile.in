@@ -44,7 +44,7 @@ all: necroml
 necroml: generator.ml necroml.ml
 ifeq ($(NECROLIB),no)
 	@read -p "Please fill path to NECROLIB:" g;\
-	ocamlc -I $$g necro.cma generator.ml necroml.ml -o necroml
+	ocamlc -I $$g/main necro.cma generator.ml necroml.ml -o necroml
 else
 	@ocamlfind ocamlc -package necro -linkpkg necro.cma generator.ml necroml.ml -o necroml
 endif
@@ -126,6 +126,9 @@ test: necroml Makefile $(TESTS)
 	@./necroml necro-test/concurrent.sk -o test/concurrent.ml
 	@ocamlc -I test test/monads.ml test/concurrent.ml test/test_interpreter_concurrent.ml -o test_interpreter_concurrent.native
 	@./test_interpreter_concurrent.native || echo "$(red)Error in file concurrent.sk testing necroml --collect.$(reset)"
+
+	@echo "Testing SudoKu"
+	@make test -C test/SudoKu > /dev/null
 
 opam_install_necroml : necroml
 ifeq ($(OPAM),opam)
