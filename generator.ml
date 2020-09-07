@@ -7,6 +7,10 @@ open Skeltypes
 
 let tmp = ref "_tmp"
 let env = ref Skeleton.empty_ss
+type 'a tree = Node of 'a * 'a tree list
+let dep_tree: string tree ref = ref (Node ("this", []))
+let dep_map = ref (Util.SMap.empty: string list Util.SMap.t)
+let all_includes = ref [""]
 
 let necro_ocaml_keywords =
 	[
@@ -25,6 +29,10 @@ let necro_ocaml_keywords =
 let print_comment ff c =
 	Format.fprintf ff "(**%s*)" c
 
+let print_from ff from =
+	Util.print_list ~sep:"" (fun ff x ->
+		Format.fprintf ff "%s." (String.capitalize_ascii x)) ff from
+
 (* print a type in the OCaml way (variable are begun with a single quote)
  * Tries to minimize the number of used parentheses *)
 let rec pp_print_type ff (s: necro_type) =
@@ -37,11 +45,11 @@ let rec pp_print_type ff (s: necro_type) =
 				(Util.print_list ~sep:", " (fun ff s -> aux false ff s)) args
 		in
 		begin match s with
-			| Alias (str, ta, _) ->
-					Format.fprintf ff "%a%s" pp_print_type_args ta str
+			| Alias (from, str, ta, _) ->
+					Format.fprintf ff "%a%a%s" pp_print_type_args ta print_from from str
 			| Variable s -> Format.fprintf ff "'%s" s
-			| Base (name, spec, args) ->
-					Format.fprintf ff "%a%s" pp_print_type_args args name
+			| Base (from, name, spec, args) ->
+					Format.fprintf ff "%a%a%s" pp_print_type_args args print_from from name
 			| Product l ->
 					begin match l with
 					| [] -> Format.fprintf ff "unit"
@@ -91,7 +99,7 @@ let exhaustive_disjoint env input_type input_terms =
 		| a :: [] -> a
 		| a :: b :: q -> union ((union_two a b) :: q)
 	in
-	let match_all = PVar {tv_typ=input_type;tv_name=""} in
+	let match_all = PVar ("", input_type) in
 	let refined = List.fold_left (fun pl p ->
 		union (List.map (Skeleton.common_refinement env input_type p) pl))
 		[match_all] input_terms
@@ -147,9 +155,10 @@ let print_loc =
 let rec print_pattern ff p =
 	begin match p with
 	| PWild _ -> Format.fprintf ff "_"
-	| PVar v -> Format.fprintf ff "%s" v.tv_name
-	| PConstr ((c, _), _, PTuple []) -> Format.fprintf ff "%s" c
-	| PConstr ((c, _), _, p) -> Format.fprintf ff "%s %a" c print_pattern p
+	| PVar (v, _) -> Format.fprintf ff "%s" v
+	| PConstr ((from, c, _), _, PTuple []) -> Format.fprintf ff "%a%s" print_from
+	from c
+	| PConstr ((from, c, _), _, p) -> Format.fprintf ff "%a%s %a" print_from from c print_pattern p
 	| PTuple pl -> Format.fprintf ff "(%a)"
 		(Util.print_list ~sep:", " print_pattern) pl
 	end
@@ -158,11 +167,11 @@ let rec print_pattern ff p =
 let rec print_term ff =
 	begin function
 	| TVar (x, _) ->
-			Format.fprintf ff "%s" x.tv_name
-	| TConstr ((c, _), _, TTuple []) ->
-			Format.fprintf ff "%s" c
-	| TConstr ((c, _), _, t) ->
-			Format.fprintf ff "%s %a" c print_term_protect t
+			Format.fprintf ff "%a%s" print_from x.tv_src x.tv_name
+	| TConstr ((from, c, _), _, TTuple []) ->
+			Format.fprintf ff "%a%s" print_from from c
+	| TConstr ((from, c, _), _, t) ->
+			Format.fprintf ff "%a%s %a" print_from from c print_term_protect t
 	| TTuple tl ->
 			Format.fprintf ff "(%a)" (Util.print_list ~sep:", " print_term) tl
 	| TFunc (x, _, s) ->
@@ -193,12 +202,12 @@ and print_skel ff s =
 	| Return t ->
 			Format.fprintf ff "M.ret %a" print_term_protect t
 	| Apply (f, _, []) ->
-			Format.fprintf ff "M.ret %s" f.tv_name
+			Format.fprintf ff "M.ret %a%s" print_from f.tv_src f.tv_name
 	| Apply (f, _, a :: []) ->
-			Format.fprintf ff "%s %a" f.tv_name print_term_protect a
+			Format.fprintf ff "%a%s %a" print_from f.tv_src f.tv_name print_term_protect a
 	| Apply (f, _, a :: q) ->
-			Format.fprintf ff "let* %s = %s %a in@,%a" !tmp f.tv_name
-			print_term_protect a print_skel (Apply ({tv_name= !tmp;tv_typ=f.tv_typ}, [], q))
+			Format.fprintf ff "let* %s = %a%s %a in@,%a" !tmp print_from f.tv_src f.tv_name
+			print_term_protect a print_skel (Apply ({tv_src=[];tv_name= !tmp;tv_typ=f.tv_typ}, [], q))
 	| LetIn (None, p, s1, s2) ->
 		if is_tuple_var p then
 			Format.fprintf ff "@[<v 2>let* %a =%ain@,%a"
@@ -220,9 +229,9 @@ and print_skel ff s =
 				| _ -> M.fail ()@,\
 				end@]"
 			!tmp print_bind_skel s1 !tmp print_pattern p print_ret_skel s2
-	| LetIn (Some (m, ta), p, s1, s2) ->
-			Format.fprintf ff "@[<v 2>let* %s = %ain@,let* %s = %s %s in@,%s (function %a ->@,%a)"
-			!tmp print_bind_skel s1 !tmp m !tmp !tmp print_pattern p print_skel s2
+	| LetIn (Some (from, m, ta), p, s1, s2) ->
+			Format.fprintf ff "@[<v 2>let* %s = %ain@,let* %s = %a%s %s in@,%s (function %a ->@,%a)"
+			!tmp print_bind_skel s1 !tmp print_from from m !tmp !tmp print_pattern p print_skel s2
 	| Branching (_, outs) ->
 				begin match branch_to_match outs with
 				| Some txt -> Format.fprintf ff "%t" txt
@@ -335,11 +344,11 @@ let print_type_decls ff env =
 		begin match s with
 		| Product _ | Variable _ | Alias _ | Arrow _ ->
 				assert false
-		| Base (s, _, []) ->
+		| Base (_, s, _, []) ->
 				Format.fprintf ff "@,type %s" s
-		| Base (s, _, _ :: []) ->
+		| Base (_, s, _, _ :: []) ->
 				Format.fprintf ff "@,type _ %s" s
-		| Base (s, _, args) ->
+		| Base (_, s, _, args) ->
 				let print_one ff _ = Format.fprintf ff "_" in
 				Format.fprintf ff "@,type (%a) %s"
 				(Util.print_list ~sep:", " print_one) args s
@@ -362,7 +371,7 @@ let print_type_decls ff env =
 
 
 (* Prints [val t: ty] for all unspecified terms *)
-let print_term_signatures ff env =
+let print_term_signatures ~all ff env =
 	let print_comment ff c =
 			begin match c with
 			| None -> ()
@@ -376,7 +385,7 @@ let print_term_signatures ff env =
 	in
 	let all_sigs =
 		env.ss_terms
-		|> Util.SMap.filter (fun a (_, _, _, t) -> t = None)
+		|> (if all then Util.id else Util.SMap.filter (fun a (_, _, _, t) -> t = None))
 		|> Util.SMap.bindings
 	in
 	if all_sigs <> [] then
@@ -437,12 +446,14 @@ let print_specified_types ~comm ff ss =
 	let get_comm base_type =
 		let name =
 			begin match base_type with
-			| Base (name, _, _) -> name
+			| Base (_, name, _, _) -> name
 			| _ -> assert false
 			end
 		in
-		let (c, _, _) = Util.SMap.find name ss.ss_types in
-		c
+		begin match Util.SMap.find_opt name ss.ss_types with
+		| Some (c, _, _) -> c
+		| None -> failwith "Internal error 1"
+		end
 	in
 	if const <> [] then
 		Format.fprintf ff "%a%a"
@@ -481,7 +492,7 @@ let print_aliases ff ss =
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "%atype %a = %a"
 				print_comment c
-				pp_print_type (Base (name, true, ta')) pp_print_type ty
+				pp_print_type (Base ([], name, true, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ss.ss_aliases)
 	| false ->
 		Format.pp_print_list ~pp_sep:(fun ff () -> ()) (fun
@@ -489,19 +500,44 @@ let print_aliases ff ss =
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "@,%aand %a = %a"
 				print_comment c
-				pp_print_type (Base (name, true, ta')) pp_print_type ty
+				pp_print_type (Base ([], name, true, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ss.ss_aliases)
 	end
 
+
+(* Function to print "with module _ := _" *)
+let print_with ff l =
+	let print_one_with ff a =
+		let a_cap = String.capitalize_ascii a in
+		Format.fprintf ff " with module %s = %s" a_cap a_cap
+	in
+	Util.print_list print_one_with ff l
+
+let print_includes_unspec print_one ff ss =
+	let l = !all_includes in
+	Util.print_list ~sep:"" print_one ff l
+
+let print_includes print_one ff ss =
+	let Node (_, l) = !dep_tree in
+	let includes = List.map (function Node (x, l) -> x) l in
+	Util.print_list ~sep:"" print_one ff includes
+
 (* writes the UNSPEC module type *)
 let print_unspec_module_type ff =
+	let print_one ff i =
+		let l = Util.SMap.find i !dep_map in
+		let i' = String.capitalize_ascii i in
+		Format.fprintf ff "@,module %s:%s.INTERPRETER with module M = M%a"
+		i' i' print_with l
+	in
 	Format.fprintf ff "(** All types, and the unspecified terms *)@,\
-		@[<v 2>module type UNSPEC = sig@,%s@,%s%a%a%a@]@,end"
+		@[<v 2>module type UNSPEC = sig@,%s%a@,%s%a%a%a@]@,end"
 		"module M: MONAD"
+		(print_includes_unspec print_one) !env
 		"include TYPES"
 		(print_specified_types ~comm:true) !env
 		print_aliases !env
-		print_term_signatures !env
+		(print_term_signatures ~all:false) !env
 
 (* writes the TYPES module type *)
 let print_types_module_type ff =
@@ -521,44 +557,108 @@ module type MONAD = sig
   val fail: unit -> 'a t
 end|}
 
+let print_args ff env =
+	let print_include ff (n, sem) =
+		Format.fprintf ff "@,(%s:%s.INTERPRETER with module M = F.M)"
+		(String.capitalize_ascii n) (String.capitalize_ascii n)
+	in
+	Util.print_list ~sep:"" print_include ff (Util.SMap.bindings env.ss_includes)
+
 (* writes the MakeInterpreter functor *)
 let print_makeinterpreter_functor ff =
 	Format.fprintf ff
 		"(** Module defining the specified terms *)@,\
-		@[<v 2>module MakeInterpreter (F : UNSPEC) = struct@,\
+		@[<v 2>module MakeInterpreter (F : UNSPEC)%a = struct@,\
 		include F@,let ( let* ) = M.bind%a@]@,end"
+		print_args !env
 		print_term_definitions !env
 
+
+
 let print_unspec_functor ff =
+	let print_one1 ff i =
+		let i' = String.capitalize_ascii i in
+		Format.fprintf ff "@,(%s:%s.INTERPRETER with module M = M)"
+		i' i'
+	in
+	let print_one2 ff i =
+		let i' = String.capitalize_ascii i in
+		Format.fprintf ff "@,module %s = %s"
+		i' i'
+	in
 	Format.fprintf ff
 		"(** A default instantiation *)@,\
-		@[<v 2>module Unspec (M:MONAD) (T:TYPES) = struct@,%s@,%s@,%s%a%a%a@]@,end@,"
+		@[<v 2>module Unspec (M:MONAD) (T:TYPES)%a = struct@,%s@,%s@,%s%a%a%a%a@]@,end@,"
+		(print_includes_unspec print_one1) !env
 		"exception NotImplemented of string"
 		"include T"
 		"module M = M"
+		(print_includes_unspec print_one2) !env
 		(print_specified_types ~comm:false) !env
 		print_aliases !env
 		print_terms_not_implemented !env
 
+let print_interpreter_module_type ff =
+	let print_one ff i =
+		let i' = String.capitalize_ascii i in
+		Format.fprintf ff "@,module %s:%s.INTERPRETER with module M = M"
+		i' i'
+	in
+	Format.fprintf ff
+	"(** The module type for interpreters *)@,\
+	@[<v 2>module type INTERPRETER = sig@,\
+	module M:MONAD%a%a%a%a%a@]@,end" 
+	(print_includes print_one) !env
+	print_type_decls !env
+	(print_specified_types ~comm:false) !env
+	print_aliases !env
+	(print_term_signatures ~all:true) !env
+
+let build_tree includes ss =
+	let rec aux (f, e) =
+		Node (f, List.map aux (Util.SMap.bindings e.ss_includes))
+	in
+	let tree = Node (
+		"this",
+		List.filter_map (fun i ->
+			begin match Util.SMap.find_opt i ss.ss_includes with
+			| None -> None
+			| Some ss -> Some (aux (i, ss))
+			end) includes)
+	in
+	let () = dep_tree := tree in
+	()
+
+let build_map includes ss =
+	let rec aux map (Node (i, l)) =
+		let map = Util.SMap.add i (List.map (function Node (x, _) -> x) l) map in
+		List.fold_left aux map l
+	in
+	let () = dep_map := aux Util.SMap.empty !dep_tree in
+	()
 
 (* writes the interpreter generator modules to stdout *)
-let generate_interpreter sem: string =
+let generate_interpreter includes sem: string =
 	let ok x =
 		not (List.mem x necro_ocaml_keywords) &&
 		not (Skeleton.all_variables_ss sem x) &&
 		not (is_keyword x)
 	in
+	let () = all_includes := includes in
+	let () = build_tree includes sem in
+	let () = build_map includes sem in
 	let () = tmp := Util.fresh ok !tmp in
 	let sem = Skeleton.protect_ss necro_ocaml_keywords sem in
 	let () = env := sem in
 	let ff = Format.str_formatter in
 	let () = Format.fprintf ff
-		"%s\n@[<v>%t\n@,%t\n@,%t\n@,%t\n@,%t@]@."
+		"%s\n@[<v>%t\n@,%t\n@,%t\n@,%t\n@,%t\n@,%t@]@."
 "(** This file was automatically generated using necroml
     See https://gitlab.inria.fr/skeletons/necro-ml/ for more informations *)"
 		print_types_module_type (* module type TYPES *)
 		print_monad_module_type (* module type MONAD *)
 		print_unspec_module_type (* module type UNSPEC *)
-		print_makeinterpreter_functor (* module MakeInterpreter (F: UNSPEC) *)
+		print_makeinterpreter_functor (* module MakeInterpreter (F: UNSPEC) …*)
 		print_unspec_functor (* module Unspec (M:MONAD) (T:TYPES) *)
+		print_interpreter_module_type (* module type INTERPRETER *)
 	in Format.flush_str_formatter ()
