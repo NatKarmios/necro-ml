@@ -8,7 +8,6 @@ open Skeltypes
 let tmp = ref "_tmp"
 let env = ref Skeleton.empty_ss
 type 'a tree = Node of 'a * 'a tree list
-let dep_tree: string tree ref = ref (Node ("this", []))
 let dep_map = ref (Util.SMap.empty: string list Util.SMap.t)
 let all_includes = ref [""]
 
@@ -518,8 +517,7 @@ let print_includes_unspec print_one ff ss =
 	Util.print_list ~sep:"" print_one ff l
 
 let print_includes print_one ff ss =
-	let Node (_, l) = !dep_tree in
-	let includes = List.map (function Node (x, l) -> x) l in
+	let includes = Util.SMap.find "this" !dep_map in
 	Util.print_list ~sep:"" print_one ff includes
 
 (* writes the UNSPEC module type *)
@@ -614,27 +612,13 @@ let print_interpreter_module_type ff =
 	print_aliases !env
 	(print_term_signatures ~all:true) !env
 
-let build_tree includes ss =
-	let rec aux (f, e) =
-		Node (f, List.map aux (Util.SMap.bindings e.ss_includes))
-	in
-	let tree = Node (
-		"this",
-		List.filter_map (fun i ->
-			begin match Util.SMap.find_opt i ss.ss_includes with
-			| None -> None
-			| Some ss -> Some (aux (i, ss))
-			end) includes)
-	in
-	let () = dep_tree := tree in
-	()
-
 let build_map includes ss =
-	let rec aux map (Node (i, l)) =
-		let map = Util.SMap.add i (List.map (function Node (x, _) -> x) l) map in
-		List.fold_left aux map l
+	let rec aux map (i, s) =
+		let incl = Util.SMap.bindings s.ss_includes in
+		let map = Util.SMap.add i (List.map fst incl) map in
+		List.fold_left aux map incl
 	in
-	let () = dep_map := aux Util.SMap.empty !dep_tree in
+	let () = dep_map := aux Util.SMap.empty ("this", ss) in
 	()
 
 (* writes the interpreter generator modules to stdout *)
@@ -645,7 +629,6 @@ let generate_interpreter includes sem: string =
 		not (is_keyword x)
 	in
 	let () = all_includes := includes in
-	let () = build_tree includes sem in
 	let () = build_map includes sem in
 	let () = tmp := Util.fresh ok !tmp in
 	let sem = Skeleton.protect_ss necro_ocaml_keywords sem in
