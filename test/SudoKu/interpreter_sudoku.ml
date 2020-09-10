@@ -80,7 +80,7 @@ let solve g =
 	print_endline (print_grid g) ;
 	(solve g).cont
 		(fun g _ -> print_endline (print_grid g))
-		(fun () -> print_endline "failure")
+		(fun s -> print_endline s)
 
 let parse file =
 	let ic = open_in file in

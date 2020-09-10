@@ -11,7 +11,7 @@ module Input(M:MONAD) = struct
   let add l1 = M.ret (fun l2 -> M.ret (l1 + l2))
   let sub l1 = M.ret (fun l2 -> M.ret (l1 - l2))
   let mult l1 = M.ret (fun l2 -> M.ret (l1 * l2))
-  let div l1 = M.ret (fun l2 -> if l2 = 0 then M.fail () else M.ret (l1 / l2))
+  let div l1 = M.ret (fun l2 -> if l2 = 0 then M.fail "Division by zero" else M.ret (l1 / l2))
 end
 
 (* First with a natural semantics *)

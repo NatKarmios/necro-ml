@@ -225,7 +225,7 @@ and print_skel ff s =
 			"@[<v 2>let* %s =%ain@,\
 				@[<v>begin match %s with@,\
 				| @[<v>%a ->%a@]@,\
-				| _ -> M.fail ()@,\
+				| _ -> M.fail \"\"@,\
 				end@]"
 			!tmp print_bind_skel s1 !tmp print_pattern p print_ret_skel s2
 	| LetIn (Some (from, m, ta), p, s1, s2) ->
@@ -254,7 +254,7 @@ and branch_to_match outs =
 		end
 	in
 	begin match outs with
-	| [] -> Some (fun ff -> Format.fprintf ff "M.fail ()")
+	| [] -> Some (fun ff -> Format.fprintf ff "M.fail \"\"")
 	| LetIn (a, p, s1, s2) :: q ->
 			begin match aux a s1 q with
 			| None -> None
@@ -262,7 +262,7 @@ and branch_to_match outs =
 					let patterns = (p, s2) :: l in
 					(* si les motifs sont deux à deux disjoints, on fait un match. Si le
 					 * total des motifs ne couvre pas le type du motif, on ajoute un
-					 * [M.fail ()]
+					 * [M.fail ""]
 					 * sinon, on renvoie None *)
 					let (exhaustive, disjoint) =
 						exhaustive_disjoint !env (Skeleton.pattern_typ p) (List.map fst patterns)
@@ -278,7 +278,7 @@ and branch_to_match outs =
 					| true, false ->
 						Some (fun ff ->
 							Format.fprintf ff "@[<v 2>let* %s =%ain@,\
-							begin match %s with@,%a@,| _ -> M.fail ()@,end"
+							begin match %s with@,%a@,| _ -> M.fail \"\"@,end"
 							!tmp print_bind_skel s1 !tmp
 							(Format.pp_print_list (fun ff (pat, skel) ->
 								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
@@ -552,7 +552,7 @@ module type MONAD = sig
   val ret: 'a -> 'a t
   val branch: (unit, 'a) arrow list -> 'a t
   val bind: 'a t -> ('a -> 'b t) -> 'b t
-  val fail: unit -> 'a t
+  val fail: string -> 'a t
 end|}
 
 let print_args ff env =

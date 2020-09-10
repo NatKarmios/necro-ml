@@ -31,21 +31,21 @@ module F = struct
   let mkClos (x, t, e) = Clos (x, t, e)
   let mkInt d = Int d
   let getClos = function
-    | Int _ -> M.fail ()
+    | Int _ -> M.fail "getClos error"
     | Clos (x, t, e) -> (x, t, e)
   let getInt = function
     | Int i -> i
-    | Clos _ -> M.fail ()
+    | Clos _ -> M.fail "getInt error"
 
   let extEnv (env, x, v) = SMap.add x v env
   let getEnv (x, env) =
     try SMap.find x env
-    with _ -> M.fail ()
+    with _ -> M.fail "getEnv error"
 
   let intOfLit v = v
   let plus (x, y) = x + y
-  let isZero d = if d <> 0 then M.fail ()
-  let isNotZero d = if d = 0 then M.fail ()
+  let isZero d = if d <> 0 then M.fail "isZero error"
+  let isNotZero d = if d = 0 then M.fail "isNotZero error"
 end
 
 module I = MakeInterpreter(F)

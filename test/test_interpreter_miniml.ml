@@ -43,27 +43,27 @@ module F = struct
 	let mkInt d = VInt d
 	let getClos = function
 		| VClos (x, t, e) -> (x, t, e)
-		| _ -> M.fail ()
+		| _ -> M.fail "getClos error"
 	let getInt = function
 		| VInt i -> i
-		| _ -> M.fail ()
+		| _ -> M.fail "getInt error"
 	let mkConstr (name, l) = VConstr (name, l)
 	let isConstrWithName (name, v) = match v with
 		| VConstr (n, l) when n = name -> l
-		| _ -> M.fail ()
+		| _ -> M.fail "isConstrWithName error"
 	let isNotConstrWithName (name, v) = match v with
 		| VConstr (n, _) when n = name ->
-				M.fail ()
+				M.fail "isNotConstrWithName error"
 		| _ -> ()
 
 	let extEnv (env, x, v) = SMap.add x v env
 	let getEnv (x, env) = try SMap.find x env with _ ->
-		M.fail ()
+		M.fail "getEnv error"
 
 	let intOfLit v = v
 	let plus (x, y) = (x + y)
-	let isZero d = if d <> 0 then M.fail ()
-	let isNotZero d = if d = 0 then M.fail ()
+	let isZero d = if d <> 0 then M.fail "isZero error"
+	let isNotZero d = if d = 0 then M.fail "isNotZero error"
 
 	let match_failure () = failwith "Match failure"
 end

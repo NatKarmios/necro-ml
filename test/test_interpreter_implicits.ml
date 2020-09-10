@@ -15,7 +15,7 @@ module NewFlow = struct
 	include T
 	include Unspec(Monads.ID)(T)
   let assert_necro b =
-    if not b then M.fail ()
+    if not b then M.fail "AssertionError"
   let litToVal lit = Int lit
   let read (ident, state) = Hashtbl.find state ident
   let write (ident, state, value) =
@@ -23,10 +23,10 @@ module NewFlow = struct
     state
   let isInt = function
     | Int i -> i
-    | _ -> M.fail ()
+    | _ -> M.fail "Is not an int"
   let isBool = function
     | Bool b -> b
-    | _ -> M.fail ()
+    | _ -> M.fail "Is not a bool"
   let add (a, b) = (a + b)
   let eq (a, b) = assert_necro (a = b)
   let neq (a, b) = assert_necro (a <> b)
