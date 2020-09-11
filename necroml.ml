@@ -10,34 +10,38 @@ let wrap f x =
 		exit 1
 let wrap2 f x y = wrap (wrap f x) y
 
-
 (* Print usage in stderr and exit *)
-let usage (): 'a =
+let usage () =
 	Printf.eprintf
-	("Usage: %s <file.sk> ... <file.sk> [-d/--find-deps] [-o/--output <file.ml>]\n\
-	If no output file is given, the result will be written in stdout.\n")
-	Sys.argv.(0);
-	exit 1
+	("Usage: %s [OPTION]... [FILE]...\n\n\
+	Get a generated interface for the last given file. For every file, \
+	the dependencies must precede in the list except if the -d option \
+	is given.\n\n\
+	Options:\n\
+	\t-d / --find-deps\tOnly one file must be given. The dependencies are then \
+	looked for in the cwd, and in the path of the given file.\n\
+	\t-o [FILE]/ --output [FILE]\tOutputs the result in given file. If this
+	option is not provided, the result is printed in stdout.\n")
+	Sys.argv.(0) ; exit 1
 
-let parse_options l =
-	let rec aux l accu deps =
+type minus =
+| Depend
+| Output of string
+
+let parse l =
+	let rec parse accu_files accu_options l =
 		begin match l with
-		| [] -> (accu, None, deps)
-		| ("-o" as s) :: q | ("--output" as s) :: q ->
-				begin match q with
-				| [] ->
-						failwith (s ^ " expects the name of an output file")
-				| out :: [] ->
-						(accu, Some out, deps)
-				| _ :: "-o" :: _ | _ :: "--output" :: _ ->
-						failwith "Multiple output files given"
-				| _ -> usage ()
-				end
+		| [] ->
+				(accu_files, accu_options)
 		| "-d" :: q | "--find-deps" :: q ->
-				if deps then usage () else aux q accu true
-		| a :: q -> if deps then usage () else aux q (a :: accu) deps
+				parse accu_files (Depend :: accu_options) q
+		| "-o" :: [] | "--output" :: [] -> usage ()
+		| "-o" :: f :: q | "--output" :: f :: q ->
+				parse accu_files (Output f :: accu_options) q
+		| a :: q ->
+				parse (a :: accu_files) accu_options q
 		end
-	in aux l [] false
+	in parse [] [] (List.tl l)
 
 let get_basename filename =
 	filename
@@ -46,37 +50,24 @@ let get_basename filename =
 
 (** MAIN FUNCTION **)
 let () =
-	let files, output_file, deps =
-		begin match Array.to_list Sys.argv with
-		| [] -> assert false
-		| _ :: q -> parse_options q
+	let files, opt = parse (Array.to_list Sys.argv) in
+	let f, d =
+		begin match files with
+		| [] -> usage ()
+		| a :: [] when List.mem Depend opt -> a, Necro.find_deps a
+		| a :: _ when List.mem Depend opt -> usage ()
+		| a :: q -> a, List.rev q
 		end
 	in
-	let files =
-		begin match deps, files with
-		| true, file :: [] -> Necro.find_deps file
-		| _, [] -> usage ()
-		| true, _ -> usage ()
-		| false, _ -> List.rev files
+	let output_file =
+		let l = List.filter_map (function | Output sk -> Some sk | _ -> None) opt in
+		begin match l with
+		| [] -> None
+		| a :: q -> if List.for_all ((=) a) q then Some a else usage ()
 		end
 	in
-	let sem = Necro.parse_and_type files in
-	let rec get_last =
-		begin function
-			| [] -> assert false
-			| x :: [] -> [], x
-			| x :: l -> let l, y = get_last l in x :: l, y
-		end 
-	in
-	let _, x = get_last sem in
-	let l, _ = get_last files in
-	let l = List.map get_basename l in
-	let result = wrap Generator.generate_interpreter l x in
-	begin match output_file with
-	| None -> print_endline result
-	| Some f ->
-			let oc = open_out f in
-			let () = output_string oc result in
-			close_out oc
-	end
+	let sem = Necro.parse_and_type d f in
+	let l = List.map get_basename d in
+	let result = wrap Generator.generate_interpreter l sem in
+	Util.print_in_file result output_file
 

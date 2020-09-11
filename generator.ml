@@ -614,11 +614,11 @@ let print_interpreter_module_type ff =
 
 let build_map includes ss =
 	let rec aux map (i, s) =
-		let incl = Util.SMap.bindings s.ss_includes in
+		let incl = Util.SMap.bindings s.ski_includes in
 		let map = Util.SMap.add i (List.map fst incl) map in
 		List.fold_left aux map incl
 	in
-	let () = dep_map := aux Util.SMap.empty ("this", ss) in
+	let () = dep_map := aux Util.SMap.empty ("this", Skeleton.ski_of_ss ss) in
 	()
 
 (* writes the interpreter generator modules to stdout *)
