@@ -20,7 +20,7 @@ TESTS = $(addprefix test/,$(shell ls test))
 
 NAME := necro-ml
 # WARNING : GIT TAG is prefixed with "v"
-VERSION := 1.0.1
+VERSION := 1.1
 TGZ := $(NAME)-v$(VERSION).tar.gz
 MD5TXT := $(TGZ).md5sum.txt
 
@@ -163,16 +163,14 @@ $(MD5TXT): $(TGZ)
 #    the md5sum checked is the one in OPAM repository not the one in the archive.
 opam_file_update : $(MD5TXT)
 	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat *.txt | cut -d" " -f 1)'"|' opam
-	@cp opam $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/
+	@mkdir -p $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/ &&\
+	cp opam $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/
 
 # Delete and create again tag for opam deployment.
-# First two instructions could fail if local or remote tag does not exist.
 # Once previous version of tag is deleted locally and remotly it is
 # created again and pushed
 git_tag:
-	-@git tag -d v$(VERSION) 2> /dev/null
-	-git push --delete origin v$(VERSION)
-	git tag -a v$(VERSION) -m 'OPAM necroml package for multirep deployment'
+	git tag -a v$(VERSION) -fm 'OPAM necroml package for deployment'
 	git push --follow-tags
 
 .PHONY: all test clean  $(TGZ) $(MD5TXT) opam_install_necroml opam_remove_necroml opam_file_update
