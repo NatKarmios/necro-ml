@@ -706,6 +706,7 @@ let generate_interpreter includes sem ski: string =
 	let () = build_map includes sem in
 	let () = tmp := Util.fresh ok !tmp in
 	let sem = Skeleton.protect_ss necro_ocaml_keywords sem in
+	let ski = Skeleton.protect_ski necro_ocaml_keywords ski in
 	let ff = Format.str_formatter in
 	let () = Format.fprintf ff
 		"%s\n@[<v>%t\n@,%t\n@,%t\n@,%t\n@,%t\n@,%t@]@."

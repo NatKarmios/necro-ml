@@ -87,6 +87,12 @@ let () =
 		| Some s -> Necro.parse_and_type_interface d s
 		end
 	in
+	let () =
+		begin match Skeleton.match_ski_ss ski sem with
+		| true -> ()
+		| false -> failwith "The interface doesn't match"
+		end
+	in
 	let l = List.map get_basename d in
 	let result = wrap3 Generator.generate_interpreter l sem ski in
 	Util.print_in_file result output_file
