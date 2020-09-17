@@ -696,7 +696,7 @@ let build_map includes ss =
 	()
 
 (* writes the interpreter generator modules to stdout *)
-let generate_interpreter includes sem ski: string =
+let generate_interpreter includes sem ski breakpoints: string =
 	let ok x =
 		not (List.mem x necro_ocaml_keywords) &&
 		not (Skeleton.all_variables_ss sem x) &&
