@@ -202,12 +202,9 @@ and print_skel sem ff s =
 			Format.fprintf ff "M.ret %a" (print_term_protect sem) t
 	| Apply (f, _, []) ->
 			Format.fprintf ff "M.ret %a%s" print_from f.tv_src f.tv_name
-	| Apply (f, _, a :: []) ->
-			Format.fprintf ff "%a%s %a" print_from f.tv_src f.tv_name
-			(print_term_protect sem) a
-	| Apply (f, _, a :: q) ->
-			Format.fprintf ff "let* %s = %a%s %a in@,%a" !tmp print_from f.tv_src f.tv_name
-			(print_term_protect sem) a (print_skel sem) (Apply ({tv_src=[];tv_name= !tmp;tv_typ=f.tv_typ}, [], q))
+	| Apply (f, _, q) ->
+			Format.fprintf ff "apply%d %a%s %a" (List.length q) print_from f.tv_src f.tv_name
+			(Util.print_list ~sep:" " (print_term_protect sem)) q
 	| LetIn (None, p, s1, s2) ->
 		if is_tuple_var p then
 			Format.fprintf ff "@[<v 2>let* %a =%ain@,%a"
@@ -230,8 +227,8 @@ and print_skel sem ff s =
 				end@]"
 			!tmp (print_bind_skel sem) s1 !tmp print_pattern p (print_ret_skel sem) s2
 	| LetIn (Some (from, m, ta), p, s1, s2) ->
-			Format.fprintf ff "@[<v 2>let* %s = %ain@,let* %s = %a%s %s in@,%s (function %a ->@,%a)"
-			!tmp (print_bind_skel sem) s1 !tmp print_from from m !tmp !tmp
+			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %a%s %s (function %a ->@,%a)"
+			!tmp (print_bind_skel sem) s1 print_from from m !tmp
 			print_pattern p (print_skel sem) s2
 	| Branching (_, outs) ->
 				begin match branch_to_match sem outs with
@@ -636,13 +633,32 @@ let print_args ff sem =
 	in
 	Util.print_list ~sep:"" print_include ff (Util.SMap.bindings sem.ss_includes)
 
+let print_applys ff apply_max =
+	let rec print_x1xn ff n =
+		if n = 1 then 
+			Format.fprintf ff "x1"
+		else
+		Format.fprintf ff "%a x%d" print_x1xn (n-1) n
+	in
+	if apply_max <> 0 then
+	Format.fprintf ff "\n@,%s%a"
+	"let apply1 f x = f x"
+	(Util.print_list (fun ff i ->
+		Format.fprintf ff
+		"@,@[<v 2>let apply%d f x0 %a =@,\
+		let* _tmp = f x0 in@,\
+		apply%d _tmp %a@]"
+		i print_x1xn (i-1) (i-1) print_x1xn (i-1)))
+	(List.init (apply_max - 1) ((+)2))
+
 (* writes the MakeInterpreter functor *)
-let print_makeinterpreter_functor sem ff =
+let print_makeinterpreter_functor apply_max sem ff =
 	Format.fprintf ff
 		"(** Module defining the specified terms *)@,\
 		@[<v 2>module MakeInterpreter (F : UNSPEC)%a = struct@,\
-		include F@,let ( let* ) = M.bind%a@]@,end"
+		include F@,let ( let* ) = M.bind%a%a@]@,end"
 		print_args sem
+		print_applys apply_max
 		print_term_definitions sem
 
 
@@ -697,10 +713,35 @@ let build_map includes ss =
 
 (* writes the interpreter generator modules to stdout *)
 let generate_interpreter includes sem ski: string =
+	let rec apply_max =
+		begin function
+		| TFunc (_, _, s) -> apply_max_skel s
+		| _ -> 0
+		end
+	and apply_max_skel =
+		begin function
+		| Branching (_, sl) -> List.fold_left max 0 (List.map apply_max_skel sl)
+		| LetIn (Some _, _, s1, s2) ->
+				max 2
+				(max (apply_max_skel s1) (apply_max_skel s2))
+		| LetIn (None, _, s1, s2) -> max (apply_max_skel s1) (apply_max_skel s2)
+		| Return t -> apply_max t
+		| Apply (_, _, l1) -> List.length l1
+		end
+	in
+	let apply_max =
+		Util.SMap.fold (fun _ (_, _, _, o) i ->
+			begin match o with
+			| None -> i
+			| Some t -> max (apply_max t) i
+			end) sem.ss_terms 0
+	in
 	let ok x =
 		not (List.mem x necro_ocaml_keywords) &&
 		not (Skeleton.all_variables_ss sem x) &&
-		not (is_keyword x)
+		not (is_keyword x) &&
+		not (List.mem x (List.init apply_max (fun i ->
+			"apply" ^ string_of_int (i+1))))
 	in
 	let () = all_includes := includes in
 	let () = build_map includes sem in
@@ -715,7 +756,7 @@ let generate_interpreter includes sem ski: string =
 		(print_types_module_type sem) (* module type TYPES *)
 		(print_monad_module_type sem) (* module type MONAD *)
 		(print_unspec_module_type sem) (* module type UNSPEC *)
-		(print_makeinterpreter_functor sem) (* module MakeInterpreter (F: UNSPEC) …*)
+		(print_makeinterpreter_functor apply_max sem) (* module MakeInterpreter (F: UNSPEC) …*)
 		(print_unspec_functor sem) (* module Unspec (M:MONAD) (T:TYPES) *)
 		(print_interpreter_module_type sem ski) (* module type INTERPRETER *)
 	in Format.flush_str_formatter ()
