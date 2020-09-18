@@ -9,6 +9,7 @@ let tmp = ref "_tmp"
 type 'a tree = Node of 'a * 'a tree list
 let dep_map = ref (Util.SMap.empty: string list Util.SMap.t)
 let all_includes = ref [""]
+let debug = ref false
 
 let necro_ocaml_keywords =
 	[
@@ -207,8 +208,16 @@ and print_skel sem ff s =
 			Format.fprintf ff "M.ret %a" (print_term_protect sem) t
 	| Apply (f, _, []) ->
 			Format.fprintf ff "M.ret %a%s" print_from f.tv_src f.tv_name
+	| Apply (f, _, q) when !debug ->
+			Format.fprintf ff "apply%d \"%s\" %a%s %a"
+			(List.length q) f.tv_name print_from f.tv_src f.tv_name
+			(Util.print_list ~sep:" " (print_term_protect sem)) q
+	| Apply (f, _, a :: []) ->
+			Format.fprintf ff "%a%s %a"
+			print_from f.tv_src f.tv_name (print_term_protect sem) a
 	| Apply (f, _, q) ->
-			Format.fprintf ff "apply%d \"%s\" %a%s %a" (List.length q) f.tv_name print_from f.tv_src f.tv_name
+			Format.fprintf ff "apply%d %a%s %a" (List.length q)
+			print_from f.tv_src f.tv_name
 			(Util.print_list ~sep:" " (print_term_protect sem)) q
 	| LetIn (None, p, s1, s2) ->
 		if is_tuple_var p then
@@ -251,9 +260,13 @@ and print_skel sem ff s =
 				end@]"
 			!tmp (print_bind_skel sem) s1 !tmp print_pattern p (print_ret_skel sem) s2
 			end
-	| LetIn (Some (from, m, ta), p, s1, s2) ->
+	| LetIn (Some (from, m, ta), p, s1, s2) when !debug ->
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 \"%a%s\" %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 print_from from m print_from from m !tmp
+			print_pattern p (print_skel sem) s2
+	| LetIn (Some (from, m, ta), p, s1, s2) ->
+			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %a%s %s (function %a ->@,%a)"
+			!tmp (print_bind_skel sem) s1 print_from from m !tmp
 			print_pattern p (print_skel sem) s2
 	| Branching (_, outs) ->
 				begin match branch_to_match sem outs with
@@ -707,6 +720,7 @@ let print_applys ff apply_max =
 	(List.init (apply_max - 1) ((+)2))
 
 let print_applys' ff apply_max =
+	if not !debug then () else
 	let rec print_x1xn ff n =
 		if n = 1 then 
 			Format.fprintf ff "x1"
@@ -728,8 +742,10 @@ let print_makeinterpreter_functor apply_max breakpoint sem ff =
 	Format.fprintf ff
 		"(** Module defining the specified terms *)@,\
 		@[<v 2>module MakeInterpreter (F : UNSPEC)%a = struct@,\
-		include F@,let ( let* ) = M.bind@,let stack = ref ([]:Stdlib.String.t Stdlib.List.t)%a%a%a@]@,end"
+		include F@,let ( let* ) = M.bind%t%a%a%a@]@,end"
 		print_args sem
+		(fun ff -> if !debug then Format.fprintf ff
+		"@,let stack = ref ([]:Stdlib.String.t Stdlib.List.t)" else ())
 		print_applys apply_max
 		print_applys' apply_max
 		(print_term_definitions breakpoint) sem
@@ -786,6 +802,7 @@ let build_map includes ss =
 
 (* writes the interpreter generator modules to stdout *)
 let generate_interpreter includes sem ski breakpoints: string =
+	let () = debug := breakpoints <> [] in
 	let rec apply_max =
 		begin function
 		| TFunc (_, _, s) -> apply_max_skel s
