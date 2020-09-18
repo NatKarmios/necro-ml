@@ -190,6 +190,11 @@ and print_bind_skel sem ff s =
 			Format.fprintf ff "@,%a@]@," (print_skel sem) s
 	| _ -> Format.fprintf ff " %a@] " (print_skel sem) s
 	end
+and print_bind_term sem ff s =
+	begin match s with
+	| TFunc _ -> assert false
+	| _ -> Format.fprintf ff " %a@] " (print_term sem) s
+	end
 and print_ret_skel sem ff s =
 	begin match s with
 	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _ :: _) | Branching _ ->
@@ -211,14 +216,33 @@ and print_skel sem ff s =
 			print_pattern p (print_bind_skel sem) s1
 			(print_skel sem) s2
 		else if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
-			Format.fprintf ff
-			"@[<v 2>let* %s =%ain@,@[<v>begin match %s with@,\
-				| @[<v>%a ->\
-					%a@]@,\
-			end@]"
-			!tmp (print_bind_skel sem) s1 !tmp print_pattern p (print_ret_skel sem) s2
+			begin match s1 with
+			| Return t ->
+				Format.fprintf ff
+				"@[<v>@[<v 2>begin match%awith@,\
+					| @[<v>%a ->\
+						%a@]@,\
+				end@]"
+				(print_bind_term sem) t print_pattern p (print_ret_skel sem) s2
+			| _ ->
+				Format.fprintf ff
+				"@[<v 2>let* %s =%ain@,@[<v>begin match %s with@,\
+					| @[<v>%a ->\
+						%a@]@,\
+				end@]"
+				!tmp (print_bind_skel sem) s1 !tmp print_pattern p (print_ret_skel sem) s2
+			end
 		else
 			(* FIXME *)
+			begin match s1 with
+			| Return t ->
+			Format.fprintf ff
+			"@[<v>@[<v 2>begin match %a with@,\
+				| @[<v>%a ->%a@]@,\
+				| _ -> M.fail \"\"@,\
+				end@]"
+			(print_bind_term sem) t print_pattern p (print_ret_skel sem) s2
+			| _ ->
 			Format.fprintf ff
 			"@[<v 2>let* %s =%ain@,\
 				@[<v>begin match %s with@,\
@@ -226,6 +250,7 @@ and print_skel sem ff s =
 				| _ -> M.fail \"\"@,\
 				end@]"
 			!tmp (print_bind_skel sem) s1 !tmp print_pattern p (print_ret_skel sem) s2
+			end
 	| LetIn (Some (from, m, ta), p, s1, s2) ->
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 \"%a%s\" %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 print_from from m print_from from m !tmp
@@ -266,15 +291,32 @@ and branch_to_match sem outs =
 					let (exhaustive, disjoint) =
 						exhaustive_disjoint sem (Skeleton.pattern_typ p) (List.map fst patterns)
 					in
-					begin match disjoint (), exhaustive () with
-					| true, true ->
+					begin match disjoint (), exhaustive (), s1 with
+					| true, true, Return t ->
 						Some (fun ff ->
-							Format.fprintf ff "@[<v 0>@[<v 2>let* %s =%ain@,begin match %s with@,%a@,end@]"
+							Format.fprintf ff "@[<v 0>@[<v 2>begin match%awith@,%a@,end@]"
+							(print_bind_term sem) t
+							(Format.pp_print_list (fun ff (pat, skel) ->
+								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
+							(print_ret_skel sem) skel)) patterns)
+					| true, true, _ ->
+						Some (fun ff ->
+							Format.fprintf ff "@[<v 0>@[<v 2>let* %s =%ain@,\
+							begin match %s with@,%a@,end@]"
 							!tmp (print_bind_skel sem) s1 !tmp
 							(Format.pp_print_list (fun ff (pat, skel) ->
 								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
 							(print_ret_skel sem) skel)) patterns)
-					| true, false ->
+					| true, false, Return t ->
+						Some (fun ff ->
+							Format.fprintf ff "@[<v 2>begin match %a with@,\
+							%a@,| _ -> M.fail \"\"@,end"
+							(print_bind_term sem) t
+							(Format.pp_print_list (fun ff (pat, skel) ->
+								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
+							(print_ret_skel sem) skel)) patterns
+							)
+					| true, false, _ ->
 						Some (fun ff ->
 							Format.fprintf ff "@[<v 2>let* %s =%ain@,\
 							begin match %s with@,%a@,| _ -> M.fail \"\"@,end"
