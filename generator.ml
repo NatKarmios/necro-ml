@@ -686,7 +686,7 @@ let print_makeinterpreter_functor apply_max breakpoint sem ff =
 	Format.fprintf ff
 		"(** Module defining the specified terms *)@,\
 		@[<v 2>module MakeInterpreter (F : UNSPEC)%a = struct@,\
-		include F@,let ( let* ) = M.bind@,let stack = ref ([]:string Stdlib.List.t)%a%a%a@]@,end"
+		include F@,let ( let* ) = M.bind@,let stack = ref ([]:Stdlib.String.t Stdlib.List.t)%a%a%a@]@,end"
 		print_args sem
 		print_applys apply_max
 		print_applys' apply_max
