@@ -212,9 +212,6 @@ and print_skel sem ff s =
 			Format.fprintf ff "apply%d \"%s\" %a%s %a"
 			(List.length q) f.tv_name print_from f.tv_src f.tv_name
 			(Util.print_list ~sep:" " (print_term_protect sem)) q
-	| Apply (f, _, a :: []) ->
-			Format.fprintf ff "%a%s %a"
-			print_from f.tv_src f.tv_name (print_term_protect sem) a
 	| Apply (f, _, q) ->
 			Format.fprintf ff "apply%d %a%s %a" (List.length q)
 			print_from f.tv_src f.tv_name
@@ -692,6 +689,7 @@ module type MONAD = sig
   val branch: (unit, 'a) arrow list -> 'a t
   val bind: 'a t -> ('a -> 'b t) -> 'b t
   val fail: string -> 'a t
+  val apply: ('a -> 'b t) -> 'a -> 'b t
 end|}
 
 let print_args ff sem =
@@ -710,7 +708,7 @@ let print_applys ff apply_max =
 	in
 	if apply_max <> 0 then
 	Format.fprintf ff "\n@,%s%a"
-	"let apply1 f x = f x"
+	"let apply1 f x = M.apply f x"
 	(Util.print_list (fun ff i ->
 		Format.fprintf ff
 		"@,@[<v 2>let apply%d f x0 %a =@,\
