@@ -23,6 +23,7 @@ let usage () =
 	looked for in the cwd, and in the path of the given file.\n\
 	\t-i [FILE]/ --interface [FILE]\tGet the given skeletal interface to be the
 	signature for the interpreter\n\
+	\t-b [TERM]/ --breakpoint [TERM]\tDebug using the given term as a breakpoint
 	\t-o [FILE]/ --output [FILE]\tOutputs the result in given file. If this
 	option is not provided, the result is printed in stdout.\n")
 	Sys.argv.(0) ; exit 1
@@ -31,6 +32,7 @@ type minus =
 | Depend
 | Output of string
 | Interface of string
+| Breakpoint of string
 
 let parse l =
 	let rec parse accu_files accu_options l =
@@ -45,6 +47,9 @@ let parse l =
 		| "-i" :: [] | "--interface" :: [] -> usage ()
 		| "-i" :: f :: q | "--interface" :: f :: q ->
 				parse accu_files (Interface f :: accu_options) q
+		| "-b" :: [] | "--breakpoint" :: [] -> usage ()
+		| "-b" :: f :: q | "--breakpoint" :: f :: q ->
+				parse accu_files (Breakpoint f :: accu_options) q
 		| a :: q ->
 				parse (a :: accu_files) accu_options q
 		end
@@ -87,6 +92,14 @@ let () =
 		| Some s -> Necro.parse_and_type_interface d s
 		end
 	in
+	let breakpoints = List.filter_map (function | Breakpoint t -> Some t | _ -> None) opt in
+	let () = List.iter (fun t ->
+		match Util.SMap.find_opt t sem.ss_terms with
+		| Some (_, _, _, None) -> failwith (t ^ " is not a specified term")
+		| None -> failwith (t ^ " was not found in the given skeletal semantics")
+		| Some (_, _, _, Some _) -> ()
+	) breakpoints
+	in
 	let () =
 		begin match Skeleton.match_ski_ss ski sem with
 		| true -> ()
@@ -94,6 +107,6 @@ let () =
 		end
 	in
 	let l = List.map get_basename d in
-	let result = wrap3 Generator.generate_interpreter l sem ski in
+	let result = wrap3 Generator.generate_interpreter l sem ski breakpoints in
 	Util.print_in_file result output_file
 

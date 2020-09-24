@@ -53,6 +53,7 @@ clean:
 	@rm -f *.cm{i,o}  necroml  test/*.cm{i,o}  *.native  $(TGZ) $(MD5TXT) config.status config.log configure
 	@rm -f test/{arith{,_list},brainfuck,concurrent,implicits,lambda,lists{,_list},miniml,nat,options,pcf,while{,_amb}}.ml
 	@rm -rf autom4te.cache
+	@make clean -C test/SudoKu > /dev/null
 
 test: necroml Makefile $(TESTS)
 	@echo "Testing necroml on arithmetic.sk"
@@ -172,5 +173,14 @@ opam_file_update : $(MD5TXT)
 git_tag:
 	git tag -a v$(VERSION) -fm 'OPAM necroml package for deployment'
 	git push --follow-tags
+
+# Change version number everywhere where it's specified, and update Makefile
+new_version:
+	@read -p "Please enter new version (current is $(VERSION)): " g;\
+	sed -i -r "s/^version: \"$(VERSION)\"/version: \"$$g\"/" ./opam;\
+	sed -i -r "s#archive/v$(VERSION)#archive/v$$g#" ./opam;\
+	sed -i -r "s#v$(VERSION).tar.gz#v$$g.tar.gz#" ./opam;\
+	sed -i -r "s/^VERSION := $(VERSION)/VERSION := $$g/" ./Makefile.in
+	autoconf ; ./configure
 
 .PHONY: all test clean  $(TGZ) $(MD5TXT) opam_install_necroml opam_remove_necroml opam_file_update

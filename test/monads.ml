@@ -12,6 +12,7 @@ module List = struct
   | [] -> []
   | a :: q -> union_two a (union q)
   let bind l f = union (List.map f l)
+	let apply f x = f x
 end
 
 module Cont = struct
@@ -27,6 +28,7 @@ module Cont = struct
     | [] -> fcont "No branch matches"
     | b :: bs ->
       (b ()) k (fun _ -> branch bs k fcont)
+	let apply f x = f x
 end
 
 module ContPoly = struct
@@ -42,6 +44,7 @@ module ContPoly = struct
     match l with
     | [] -> fcont "No branch matches"
     | b :: bs -> (b ()).cont k (fun _ -> (branch bs).cont k fcont) }
+	let apply f x = f x
 end
 
 module ID = struct
@@ -57,6 +60,7 @@ module ID = struct
 		end
 	let fail s = raise (Branch_fail s)
 	let bind x f = f x
+	let apply f x = f x
 end
 
 
@@ -96,6 +100,7 @@ module Rand = struct
 					branch rest
 				end
 		end
+	let apply f x = f x
 end
 
 module Bfs = struct
@@ -103,6 +108,7 @@ module Bfs = struct
 		| Ret : 'a -> 'a t
 		| Bind : ('b t * ('b -> 'a t)) -> 'a t
 		| Branch: (unit -> 'a t) list -> 'a t
+		| Apply : ('a -> 'b t) * 'a -> 'b t
 	type ('a, 'b) arrow = 'a -> 'b t
 	let ret x = Ret x
 	let branch l = Branch l
@@ -113,6 +119,7 @@ module Bfs = struct
 		| Ret x -> Ret x
 		| Bind (Ret x, f) -> f x
 		| Bind (x, f) -> Bind (eval_step x, f)
+		| Apply (f, x) -> f x
 		| Branch l ->
 				let step =
 					Stdlib.List.fold_left (fun aux v ->
@@ -135,4 +142,5 @@ module Bfs = struct
 		| Ret x -> x
 		| y -> let y' = eval_step y in eval y'
 		end
+	let apply f x = Apply (f, x)
 end
