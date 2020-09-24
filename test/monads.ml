@@ -26,7 +26,7 @@ module Cont = struct
     match l with
     | [] -> fcont "No branch matches"
     | b :: bs ->
-      (b ()) k (fun () -> branch bs k fcont)
+      (b ()) k (fun _ -> branch bs k fcont)
 end
 
 module ContPoly = struct
@@ -96,5 +96,43 @@ module Rand = struct
 					branch rest
 				end
 		end
+end
 
+module Bfs = struct
+	type 'a t =
+		| Ret : 'a -> 'a t
+		| Bind : ('b t * ('b -> 'a t)) -> 'a t
+		| Branch: (unit -> 'a t) list -> 'a t
+	type ('a, 'b) arrow = 'a -> 'b t
+	let ret x = Ret x
+	let branch l = Branch l
+	let fail _ = branch []
+  let bind x f = Bind (x, f)
+	let rec eval_step : type a. a t -> a t =
+		begin function
+		| Ret x -> Ret x
+		| Bind (Ret x, f) -> f x
+		| Bind (x, f) -> Bind (eval_step x, f)
+		| Branch l ->
+				let step =
+					Stdlib.List.fold_left (fun aux v ->
+						begin match aux with
+						| `Accu q ->
+								begin match v () with
+								| Ret x -> `Done x
+								| Branch l -> `Accu (l @ q)
+								| w -> `Accu ((fun () -> eval_step w) :: q)
+								end
+						| `Done _ -> aux
+						end) (`Accu []) l
+				in
+				match step with
+				| `Done x -> Ret x
+				| `Accu q -> Branch q
+		end
+	let rec eval: type a. a t -> a =
+		begin function
+		| Ret x -> x
+		| y -> let y' = eval_step y in eval y'
+		end
 end
