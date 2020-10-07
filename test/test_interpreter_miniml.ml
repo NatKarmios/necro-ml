@@ -4,7 +4,7 @@ module SMap = Map.Make(String)
 
 module M = Monads.ID
 
-module rec T : (sig
+module rec T : sig
 	type ident = string
 	type lit = int
 	type nonrec int = int
@@ -14,18 +14,7 @@ module rec T : (sig
 		| VInt of int
 		| VClos of ident * Unspec(M)(T).mlterm * env
 		| VConstr of string * value Unspec(M)(T).list
-end)
-= struct
-	type ident = string
-	type lit = int
-	type nonrec int = int
-
-	type env = value SMap.t
-	and value =
-		| VInt of int
-		| VClos of ident * Unspec(M)(T).mlterm * env
-		| VConstr of string * value Unspec(M)(T).list
-end
+end = T
 
 module F = struct
 	include T

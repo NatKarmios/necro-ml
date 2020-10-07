@@ -2,11 +2,10 @@ open Lambda
 
 module M = Monads.ID
 
-module rec T: (TYPES with type ident = string
-	and type env = (T.ident * Unspec(M)(T).clos) list) = struct
+module rec T: sig
 	type ident = string
-	and env = (ident * Unspec(M)(T).clos) list
-end
+	type env = (T.ident * Unspec(M)(T).clos) list
+end = T
 
 module Unspec = struct
 	include T

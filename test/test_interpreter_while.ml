@@ -10,14 +10,7 @@ module rec T: sig
 		type vint = int
 		type state = Unspec(Monads.ID)(T).value SMap.t
 		type 'a st = state -> 'a * state
-	end =
-struct
-	type ident = string
-	type lit = int
-	type vint = int
-	type state = Unspec(Monads.ID)(T).value SMap.t
-	type 'a st = state -> 'a * state
-end
+	end = T
 
 
 module Unspec = struct
