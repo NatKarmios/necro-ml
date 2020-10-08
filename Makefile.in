@@ -20,7 +20,7 @@ TESTS = $(addprefix test/,$(shell ls test))
 
 NAME := necro-ml
 # WARNING : GIT TAG is prefixed with "v"
-VERSION := 1.1.0
+VERSION := 1.1.1
 TGZ := $(NAME)-v$(VERSION).tar.gz
 MD5TXT := $(TGZ).md5sum.txt
 
@@ -165,7 +165,7 @@ $(MD5TXT): $(TGZ)
 opam_file_update : $(MD5TXT)
 	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat *.txt | cut -d" " -f 1)'"|' opam
 	@mkdir -p $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/ &&\
-	cp opam $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/
+		cp opam $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/
 
 # Delete and create again tag for opam deployment.
 # Once previous version of tag is deleted locally and remotly it is
