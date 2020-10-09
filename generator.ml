@@ -60,9 +60,9 @@ let rec pp_print_type ff (s: necro_type) =
 						(Util.print_list ~sep:" * " (fun ff s -> aux true ff s)) l
 					end
 			| Arrow (s1, s2) when protect->
-					Format.fprintf ff "(%a, %a) M.arrow" (aux true) s1 (aux true) s2
+					Format.fprintf ff "(%a -> %a M.t)" (aux true) s1 (aux true) s2
 			| Arrow (s1, s2) ->
-					Format.fprintf ff "(%a, %a) M.arrow" (aux true) s1 (aux false) s2
+					Format.fprintf ff "(%a -> %a M.t)" (aux true) s1 (aux true) s2
 		end
 	in
 	aux false ff s
@@ -684,9 +684,8 @@ let print_monad_module_type sem ff =
 {|(** The interpretation monad *)
 module type MONAD = sig
   type 'a t
-  type ('a, 'b) arrow = 'a -> 'b t
   val ret: 'a -> 'a t
-  val branch: (unit, 'a) arrow list -> 'a t
+  val branch: (unit -> 'a t) list -> 'a t
   val bind: 'a t -> ('a -> 'b t) -> 'b t
   val fail: string -> 'a t
   val apply: ('a -> 'b t) -> 'a -> 'b t

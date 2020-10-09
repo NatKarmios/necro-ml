@@ -1,6 +1,5 @@
 module List = struct
 	type 'a t = 'a list
-	type ('a, 'b) arrow = 'a -> 'b t
 	let ret x = [x]
 	let rec branch l =
 		List.concat (List.map (fun f -> f ()) l)
@@ -19,7 +18,6 @@ module Cont = struct
   type fcont = string -> unit
   type 'a cont = 'a -> fcont -> unit
   type 'a t = 'a cont -> fcont -> unit
-  type ('a, 'b) arrow = 'a -> 'b t
   let ret (x: 'a) = fun (k:'a cont) fcont -> k x fcont
   let bind (x: 'a t) (f: 'a -> 'b t) = fun k fcont -> x (fun v fcont' -> f v k fcont') fcont
   let fail s = fun k fcont -> fcont s
@@ -35,7 +33,6 @@ module ContPoly = struct
   type 'b fcont = string -> 'b
   type ('a,'b) cont = 'a -> 'b fcont -> 'b
   type 'a t = {cont: 'b. (('a,'b) cont -> 'b fcont -> 'b)}
-  type ('a, 'b) arrow = 'a -> 'b t
   let ret (x: 'a) = { cont= fun k fcont -> k x fcont }
   let bind (x: 'a t) (f: 'a -> 'b t) : 'b t =
     { cont = fun k fcont -> x.cont (fun v fcont' -> (f v).cont k fcont') fcont }
@@ -50,7 +47,6 @@ end
 module ID = struct
 	exception Branch_fail of string
 	type 'a t = 'a
-	type ('a, 'b) arrow = 'a -> 'b t
 	let ret x = x
 	let rec branch l =
 		begin match l with
@@ -67,7 +63,6 @@ end
 module Rand = struct
 	exception Branch_fail of string
 	type 'a t = 'a
-	type ('a, 'b) arrow = 'a -> 'b t
 	let ret x = x
 	let fail s = raise (Branch_fail s)
 	let bind x f = f x
@@ -109,7 +104,6 @@ module Bfs = struct
 		| Bind : ('b t * ('b -> 'a t)) -> 'a t
 		| Branch: (unit -> 'a t) list -> 'a t
 		| Apply : ('a -> 'b t) * 'a -> 'b t
-	type ('a, 'b) arrow = 'a -> 'b t
 	let ret x = Ret x
 	let branch l = Branch l
 	let fail _ = branch []
