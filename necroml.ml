@@ -89,7 +89,10 @@ let () =
 	let ski =
 		begin match ski_file with
 		| None -> Necro.Skeleton.ski_of_ss sem
-		| Some s -> Necro.parse_and_type_interface d s
+		| Some s ->
+				let ski = Necro.parse_and_type_interface d s in
+				let () = Skeleton.match_ski_ss s ski f sem in
+				ski
 		end
 	in
 	let breakpoints = List.filter_map (function | Breakpoint t -> Some t | _ -> None) opt in
@@ -99,12 +102,6 @@ let () =
 		| None -> failwith (t ^ " was not found in the given skeletal semantics")
 		| Some (_, _, _, Some _) -> ()
 	) breakpoints
-	in
-	let () =
-		begin match Skeleton.match_ski_ss ski sem with
-		| true -> ()
-		| false -> failwith "The interface doesn't match"
-		end
 	in
 	let l = List.map get_basename d in
 	let result = wrap3 Generator.generate_interpreter l sem ski breakpoints in
