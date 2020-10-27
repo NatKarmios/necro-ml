@@ -110,7 +110,7 @@ module Bfs = struct
 		let () = Stdlib.List.iter (fun x -> Queue.push x q) l in
 		Branch q
 	let fail _ = branch []
-  let bind x f = Bind (x, f)
+	let bind x f = Bind (x, f)
 	let rec eval_step : type a. a t -> a t =
 		let open Queue in
 		begin function
@@ -127,12 +127,16 @@ module Bfs = struct
 				| w -> Queue.add (fun () -> eval_step w) l; Branch l
 				end
 		end
-	let rec eval: type a. a t -> a =
-		begin function
-		| Ret x -> x
-		| Branch l when Queue.is_empty l -> failwith "No result"
-		| y -> let y' = eval_step y in eval y'
-		end
+	let rec repeat i f x =
+		if i < 0 then x else
+			repeat (i - 1) f (f x)
+	let rec eval: type a. ?i:int -> a t -> a =
+		fun ?(i=1) ->
+			begin function
+			| Ret x -> x
+			| Branch l when Queue.is_empty l -> failwith "No result"
+			| y -> let y' = repeat i eval_step y in eval ~i:(i + 1) y'
+			end
 	let apply f x = Apply (f, x)
 end
 
