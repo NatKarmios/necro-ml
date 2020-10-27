@@ -102,8 +102,47 @@ module Bfs = struct
 	type 'a t =
 		| Ret : 'a -> 'a t
 		| Bind : ('b t * ('b -> 'a t)) -> 'a t
-		| Branch: (unit -> 'a t) list -> 'a t
+		| Branch: (unit -> 'a t) Queue.t -> 'a t
 		| Apply : ('a -> 'b t) * 'a -> 'b t
+	let ret x = Ret x
+	let branch l =
+		let q = Queue.create () in
+		let () = Stdlib.List.iter (fun x -> Queue.push x q) l in
+		Branch q
+	let fail _ = branch []
+  let bind x f = Bind (x, f)
+	let rec eval_step : type a. a t -> a t =
+		let open Queue in
+		begin function
+		| Ret x -> Ret x
+		| Bind (Ret x, f) -> f x
+		| Bind (x, f) -> Bind (eval_step x, f)
+		| Apply (f, x) -> f x
+		| Branch l when is_empty l -> Branch l
+		| Branch l ->
+				let x = Queue.take l in
+				begin match x () with
+				| Ret x -> Ret x
+				| Branch l' -> Queue.transfer l' l; Branch l
+				| w -> Queue.add (fun () -> eval_step w) l; Branch l
+				end
+		end
+	let rec eval: type a. a t -> a =
+		begin function
+		| Ret x -> x
+		| Branch l when Queue.is_empty l -> failwith "No result"
+		| y -> let y' = eval_step y in eval y'
+		end
+	let apply f x = Apply (f, x)
+end
+
+module Debug = struct
+	type 'a with_print = {cont: 'a; print: 'a -> string}
+	type 'a t =
+		| Ret : 'a with_print -> 'a t
+		| Bind : ('b t * ('b -> 'a t)) -> 'a t
+		| Branch: (unit -> 'a t) list -> 'a t
+		| Apply : ('a with_print -> 'b t) * 'a with_print -> 'b t
 	let ret x = Ret x
 	let branch l = Branch l
 	let fail _ = branch []
@@ -111,30 +150,10 @@ module Bfs = struct
 	let rec eval_step : type a. a t -> a t =
 		begin function
 		| Ret x -> Ret x
-		| Bind (Ret x, f) -> f x
+		| Bind (Ret x, f) -> f x.cont
 		| Bind (x, f) -> Bind (eval_step x, f)
 		| Apply (f, x) -> f x
-		| Branch l ->
-				let step =
-					Stdlib.List.fold_left (fun aux v ->
-						begin match aux with
-						| `Accu q ->
-								begin match v () with
-								| Ret x -> `Done x
-								| Branch l -> `Accu (l @ q)
-								| w -> `Accu ((fun () -> eval_step w) :: q)
-								end
-						| `Done _ -> aux
-						end) (`Accu []) l
-				in
-				match step with
-				| `Done x -> Ret x
-				| `Accu q -> Branch q
-		end
-	let rec eval: type a. a t -> a =
-		begin function
-		| Ret x -> x
-		| y -> let y' = eval_step y in eval y'
+		| Branch l -> Branch []
 		end
 	let apply f x = Apply (f, x)
 end
