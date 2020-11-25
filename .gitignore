@@ -1,6 +1,7 @@
 necroml
 *.native
 test/arith.ml
+test/features.ml
 test/arith_list.ml
 test/brainfuck.ml
 test/concurrent.ml

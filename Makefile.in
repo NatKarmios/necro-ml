@@ -56,6 +56,11 @@ clean:
 	@make clean -C test/SudoKu > /dev/null
 
 test: necroml Makefile $(TESTS)
+	@echo "Testing necroml on features.sk"
+	@set -o pipefail ;
+	@./necroml necro-test/features.sk -o test/features.ml ;
+	@ocamlc -c test/features.ml || echo "$(red)Error in file features.sk testing necroml.$(reset)"
+
 	@echo "Testing necroml on arithmetic.sk"
 	@set -o pipefail
 	@./necroml necro-test/arithmetic.sk -o test/arith.ml

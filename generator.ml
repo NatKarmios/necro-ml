@@ -109,12 +109,15 @@ let rec pp_print_type ff (s: necro_type) =
 	in
 	aux false ff s
 
+(* FIXME: rename. [is_tuple_var] checks whether the pattern is a valid OCaml
+	pattern, or whether it would raise a warning *)
 let rec is_tuple_var p =
 	match p with
 	| PConstr _ -> false
 	| PTuple vl -> List.for_all is_tuple_var vl
 	| PVar _ -> true
 	| PWild _ -> true
+	| PRecord _ -> true
 
 let exhaustive_disjoint sem input_type input_terms =
 	(* Check that the pattern [p1] is included in pattern [p2], that is, a term which
@@ -193,24 +196,64 @@ let print_loc =
 	end
 
 
-let rec print_pattern ff p =
+let rec get_from_ski from ski =
+	begin match from with
+	| [] -> ski
+	| a :: q -> get_from_ski q (Util.SMap.find a ski.ski_includes).contents
+	end
+
+let rec print_pattern sem ff p =
+	let print_record_field ff ((from, c, _), _, p) =
+		Format.fprintf ff "%a%s = %a" print_from from c (print_pattern sem) p
+	in
 	begin match p with
 	| PWild _ -> Format.fprintf ff "_"
 	| PVar (v, _) -> Format.fprintf ff "%s" v
-	| PConstr ((from, c, _), _, PTuple []) -> Format.fprintf ff "%a%s" print_from
-	from c
-	| PConstr ((from, c, _), _, p) -> Format.fprintf ff "%a%s %a" print_from from c print_pattern p
+	| PConstr ((from, c, ty), _, PTuple []) ->
+			let f, ty =
+				begin match Skeleton.unalias ty with
+				| Base (f, ty, _, _) -> f, ty
+				| _ -> assert false
+				end
+			in
+			let ski = get_from_ski f (Skeleton.ski_of_ss sem) in
+			let (_, _, cl) = Util.SMap.find ty ski.ski_types in
+			let cdef = List.find (fun cs -> cs.cs_name = c) (Option.get cl) in
+			let input = cdef.cs_input_type in
+			if input = Product [] then
+				Format.fprintf ff "%a%s" print_from from c
+			else
+				Format.fprintf ff "%a%s ()" print_from from c
+	| PConstr ((from, c, _), _, p) -> Format.fprintf ff "%a%s %a" print_from from
+		c (print_pattern sem) p
 	| PTuple pl -> Format.fprintf ff "(%a)"
-		(Util.print_list ~sep:", " print_pattern) pl
+		(Util.print_list ~sep:", " (print_pattern sem)) pl
+	| PRecord pl -> Format.fprintf ff "{%a}"
+		(Util.print_list ~sep:"; " print_record_field) pl
 	end
 
-
 let rec print_term sem ff =
+	let print_record_field ff ((from, c, _), _, t) =
+		Format.fprintf ff "%a%s = %a" print_from from c (print_term sem) t
+	in
 	begin function
 	| TVar' (x, _) ->
 			Format.fprintf ff "%a%s" print_from x.tv_src x.tv_name
-	| TConstr' ((from, c, _), _, TTuple' []) ->
-			Format.fprintf ff "%a%s" print_from from c
+	| TConstr' ((from, c, ty), _, TTuple' []) ->
+			let f, ty =
+				begin match Skeleton.unalias ty with
+				| Base (f, ty, _, _) -> f, ty
+				| _ -> assert false
+				end
+			in
+			let ski = get_from_ski f (Skeleton.ski_of_ss sem) in
+			let (_, _, cl) = Util.SMap.find ty ski.ski_types in
+			let cdef = List.find (fun cs -> cs.cs_name = c) (Option.get cl) in
+			let input = cdef.cs_input_type in
+			if input = Product [] then
+				Format.fprintf ff "%a%s" print_from from c
+			else
+				Format.fprintf ff "%a%s ()" print_from from c
 	| TConstr' ((from, c, _), _, t) ->
 			Format.fprintf ff "%a%s %a" print_from from c (print_term_protect sem) t
 	| TTuple' tl ->
@@ -218,6 +261,13 @@ let rec print_term sem ff =
 	| TFunc' (x, _, s) ->
 			Format.fprintf ff "begin function %s ->@,@[<v 2>  %a@]@,end" x
 			(print_skel sem) s
+	| TField' (t, _, (from, f, _)) ->
+			Format.fprintf ff "%a.%a%s" (print_term sem) t print_from from f
+	| TRecord' (None, tl) ->
+			Format.fprintf ff "{%a}" (Util.print_list ~sep:"; " print_record_field) tl
+	| TRecord' (Some t, tl) ->
+			Format.fprintf ff "{%a with %a}"
+			(print_term sem) t (Util.print_list ~sep:"; " print_record_field) tl
 	end
 
 and print_term_protect sem ff t =
@@ -263,7 +313,7 @@ and print_skel sem ff s =
 	| LetIn' (None, p, s1, s2) ->
 		if is_tuple_var p then
 			Format.fprintf ff "@[<v 2>let* %a =%ain@,%a"
-			print_pattern p (print_bind_skel sem) s1
+			(print_pattern sem) p (print_bind_skel sem) s1
 			(print_skel sem) s2
 		else if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
 			begin match s1 with
@@ -273,14 +323,14 @@ and print_skel sem ff s =
 					| @[<v>%a ->\
 						%a@]@,\
 				end@]"
-				(print_bind_term sem) t print_pattern p (print_ret_skel sem) s2
+				(print_bind_term sem) t (print_pattern sem) p (print_ret_skel sem) s2
 			| _ ->
 				Format.fprintf ff
 				"@[<v 2>let* %s =%ain@,@[<v>begin match %s with@,\
 					| @[<v>%a ->\
 						%a@]@,\
 				end@]"
-				!tmp (print_bind_skel sem) s1 !tmp print_pattern p (print_ret_skel sem) s2
+				!tmp (print_bind_skel sem) s1 !tmp (print_pattern sem) p (print_ret_skel sem) s2
 			end
 		else
 			(* FIXME *)
@@ -291,7 +341,7 @@ and print_skel sem ff s =
 				| @[<v>%a ->%a@]@,\
 				| _ -> M.fail \"\"@,\
 				end@]"
-			(print_bind_term sem) t print_pattern p (print_ret_skel sem) s2
+			(print_bind_term sem) t (print_pattern sem) p (print_ret_skel sem) s2
 			| _ ->
 			Format.fprintf ff
 			"@[<v 2>let* %s =%ain@,\
@@ -299,16 +349,16 @@ and print_skel sem ff s =
 				| @[<v>%a ->%a@]@,\
 				| _ -> M.fail \"\"@,\
 				end@]"
-			!tmp (print_bind_skel sem) s1 !tmp print_pattern p (print_ret_skel sem) s2
+			!tmp (print_bind_skel sem) s1 !tmp (print_pattern sem) p (print_ret_skel sem) s2
 			end
 	| LetIn' (Some (from, m, ta), p, s1, s2) when !debug ->
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 \"%a%s\" %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 print_from from m print_from from m !tmp
-			print_pattern p (print_skel sem) s2
+			(print_pattern sem) p (print_skel sem) s2
 	| LetIn' (Some (from, m, ta), p, s1, s2) ->
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 print_from from m !tmp
-			print_pattern p (print_skel sem) s2
+			(print_pattern sem) p (print_skel sem) s2
 	| Branching' (_, outs) ->
 				begin match branch_to_match sem outs with
 				| Some txt -> Format.fprintf ff "%t" txt
@@ -351,7 +401,7 @@ and branch_to_match sem outs =
 							Format.fprintf ff "@[<v 0>@[<v 2>begin match%awith@,%a@,end@]"
 							(print_bind_term sem) t
 							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
+								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
 							(print_ret_skel sem) skel)) patterns)
 					| true, true, _ ->
 						Some (fun ff ->
@@ -359,7 +409,7 @@ and branch_to_match sem outs =
 							begin match %s with@,%a@,end@]"
 							!tmp (print_bind_skel sem) s1 !tmp
 							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
+								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
 							(print_ret_skel sem) skel)) patterns)
 					| true, false, Return' t ->
 						Some (fun ff ->
@@ -367,7 +417,7 @@ and branch_to_match sem outs =
 							%a@,| _ -> M.fail \"\"@,end"
 							(print_bind_term sem) t
 							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
+								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
 							(print_ret_skel sem) skel)) patterns
 							)
 					| true, false, _ ->
@@ -376,7 +426,7 @@ and branch_to_match sem outs =
 							begin match %s with@,%a@,| _ -> M.fail \"\"@,end"
 							!tmp (print_bind_skel sem) s1 !tmp
 							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
+								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
 							(print_ret_skel sem) skel)) patterns
 							)
 					| _ -> None
@@ -567,6 +617,20 @@ let (print_specified_types, print_spec_types_ski) =
 				c.cs_name print ty print_com (Option.map Util.contents c.cs_comment)
 		end
 	in
+	let print_field ff c =
+		let print = pp_print_type in
+		let print_com ff =
+			begin function
+			| None -> ()
+			| Some c -> Format.fprintf ff " %a" print_comment c
+			end
+		in
+		begin match c.cs_output_type with
+		| ty ->
+				Format.fprintf ff "  %s: %a%a"
+				c.cs_name print ty print_com (Option.map Util.contents c.cs_comment)
+		end
+	in
 	(begin fun ~comm ff ss ->
 	let print_comment ff c =
 		if not comm then () else
@@ -577,6 +641,7 @@ let (print_specified_types, print_spec_types_ski) =
 			end
 	in
 	let const = Skeleton.get_constructors_by_type ss in
+	let fields = Skeleton.get_fields_by_type ss in
 	let get_comm base_type =
 		let name =
 			begin match base_type with
@@ -591,23 +656,38 @@ let (print_specified_types, print_spec_types_ski) =
 	in
 	if const <> [] then
 		Format.fprintf ff "%a%a"
-			(fun ff (ty, c) -> Format.fprintf ff "\n%a@,type %a =@,%a"
+			(fun ff (ty, c) -> Format.fprintf ff "\n@,%atype %a =@,%a"
 				print_comment (get_comm ty) pp_print_type ty
 				(Format.pp_print_list print_constructor) c)
 			(List.hd const)
 				(Util.print_list ~sep:"" (fun ff (ty, c) ->
 					Format.fprintf ff "%a@,and %a =@,%a"
 					print_comment (get_comm ty) pp_print_type ty
-					(Format.pp_print_list print_constructor) c)) (List.tl const) end,
+					(Format.pp_print_list print_constructor) c)) (List.tl const);
+	if fields <> [] then
+		Format.fprintf ff "%a%a"
+			(fun ff (ty, f) -> Format.fprintf ff "%s@,%a%s %a = {@,%a@,}"
+				(if const = [] then "\n" else "")
+				print_comment (get_comm ty)
+				(if const = [] then "type" else "and")
+				pp_print_type ty
+				(Format.pp_print_list ~pp_sep:(fun ff _ ->
+					Format.fprintf ff ";@,") print_field) f)
+			(List.hd fields)
+				(Util.print_list ~sep:"" (fun ff (ty, f) ->
+					Format.fprintf ff "@,and %a =@,%a"
+					pp_print_type ty
+					(Format.pp_print_list print_field) f)) (List.tl fields) end,
 		begin fun ff ski ->
-	let get_constructors_by_type ski =
-		Util.SMap.fold (fun _ (_, s,c) l ->
-			begin match c with
-			| None -> l
-			| Some c -> (s,c) :: l
-			end) ski.ski_types []
+	let get_constructors_and_fields_by_type ski =
+		Util.SMap.fold (fun _ (_, s,c) (lc, lf) ->
+			begin match s, c with
+			| Base (_, _, Variant, _), Some c -> (s,c) :: lc, lf
+			| Base (_, _, Record , _), Some c -> lc, (s,c) :: lf
+			| _, _ -> (lc, lf)
+			end) ski.ski_types ([], [])
 	in
-	let const = get_constructors_by_type ski in
+	let const, fields = get_constructors_and_fields_by_type ski in
 	if const <> [] then
 		Format.fprintf ff "%a%a"
 			(fun ff (ty, c) -> Format.fprintf ff "\n@,type %a =@,%a"
@@ -617,7 +697,20 @@ let (print_specified_types, print_spec_types_ski) =
 				(Util.print_list ~sep:"" (fun ff (ty, c) ->
 					Format.fprintf ff "@,and %a =@,%a"
 					pp_print_type ty
-					(Format.pp_print_list print_constructor) c)) (List.tl const) end)
+					(Format.pp_print_list print_constructor) c)) (List.tl const) ;
+	if fields <> [] then
+		Format.fprintf ff "%a%a"
+			(fun ff (ty, f) -> Format.fprintf ff "%t %a = {@,%a@,}"
+			(fun ff -> Format.fprintf ff (if const = [] then "\n@,type" else "@,and"))
+				pp_print_type ty
+				(Format.pp_print_list ~pp_sep:(fun ff _ ->
+					Format.fprintf ff ";@,") print_field) f)
+			(List.hd fields)
+				(Util.print_list ~sep:"" (fun ff (ty, f) ->
+					Format.fprintf ff "@,and %a =@,%a"
+					pp_print_type ty
+					(Format.pp_print_list print_field) f)) (List.tl fields)
+		end)
 
 	(*
 	 *if const <> [] then
