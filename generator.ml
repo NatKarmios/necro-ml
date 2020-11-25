@@ -1,6 +1,48 @@
 open Necro
 open Skeltypes
 
+
+(* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
+(* =====                Forget locations                 ===== *)
+(* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
+
+type term' =
+	| TVar' of typed_var * necro_type list
+	| TConstr' of constructor * necro_type list * term'
+	| TTuple' of term' list
+	| TFunc' of string * necro_type * skeleton'
+	| TField' of term' * necro_type list * constructor
+	| TRecord' of term' option * (constructor * necro_type list * term') list
+
+and skeleton' =
+	| Branching' of necro_type * skeleton' list
+	| LetIn' of (from * string * necro_type list) option * pattern * skeleton' * skeleton'
+	| Return' of term'
+	| Apply' of typed_var * necro_type list * term' list
+
+let interpretation' =
+	let open Interpretation in {
+		var_interp' = (fun a b -> TVar' (a, b)) ;
+		constr_interp' = (fun a b c -> TConstr' (a, b, c)) ;
+		tuple_interp' = (fun a -> TTuple' a) ;
+		function_interp' = (fun a b c -> TFunc' (a, b, c)) ;
+		field_interp' = (fun a b c -> TField' (a, b, c)) ;
+		record_interp' = (fun a b -> TRecord' (a, b)) ;
+		letin_interp' = (fun a b c d ->
+			begin match a with
+			| None -> LetIn' (None, b, c, d)
+			| Some (x, y, z) -> LetIn' (Some (x, y.contents, z), b, c, d)
+			end) ;
+		apply_interp' = (fun a b c -> Apply'(a, b, c)) ;
+		merge_interp' = (fun a b -> Branching' (a, b)) ;
+		return_interp' = (fun a -> Return' a)
+	}
+
+let (term'_of_term, skel'_of_skel) =
+	let open Interpretation in
+	(interpret_term' interpretation', interpret_skeleton' interpretation')
+
+
 (* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
 (* =====          Parameters & useful functions          ===== *)
 (* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
@@ -165,65 +207,67 @@ let rec print_pattern ff p =
 
 let rec print_term sem ff =
 	begin function
-	| TVar (x, _) ->
+	| TVar' (x, _) ->
 			Format.fprintf ff "%a%s" print_from x.tv_src x.tv_name
-	| TConstr ((from, c, _), _, TTuple []) ->
+	| TConstr' ((from, c, _), _, TTuple' []) ->
 			Format.fprintf ff "%a%s" print_from from c
-	| TConstr ((from, c, _), _, t) ->
+	| TConstr' ((from, c, _), _, t) ->
 			Format.fprintf ff "%a%s %a" print_from from c (print_term_protect sem) t
-	| TTuple tl ->
+	| TTuple' tl ->
 			Format.fprintf ff "(%a)" (Util.print_list ~sep:", " (print_term sem)) tl
-	| TFunc (x, _, s) ->
+	| TFunc' (x, _, s) ->
 			Format.fprintf ff "begin function %s ->@,@[<v 2>  %a@]@,end" x
 			(print_skel sem) s
 	end
 
 and print_term_protect sem ff t =
 	begin match t with
-	| TVar _ | TTuple _ | TConstr (_, _, TTuple []) ->
+	| TVar' _ | TTuple' _ | TConstr' (_, _, TTuple' []) ->
 			print_term sem ff t
 	| _ -> Format.fprintf ff "(%a)" (print_term sem) t
 	end
 
 and print_bind_skel sem ff s =
 	begin match s with
-	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _ :: _) | Branching _ ->
+	| LetIn' _ | Return' (TFunc' _)
+	| Apply' (_, _, _ :: _ :: _) | Branching' _ ->
 			Format.fprintf ff "@,%a@]@," (print_skel sem) s
 	| _ -> Format.fprintf ff " %a@] " (print_skel sem) s
 	end
 and print_bind_term sem ff s =
 	begin match s with
-	| TFunc _ -> assert false
+	| TFunc' _ -> assert false
 	| _ -> Format.fprintf ff " %a@] " (print_term sem) s
 	end
 and print_ret_skel sem ff s =
 	begin match s with
-	| LetIn _ | Return (TFunc _) | Apply (_, _, _ :: _ :: _) | Branching _ ->
+	| LetIn' _ | Return' (TFunc' _)
+	| Apply' (_, _, _ :: _ :: _) | Branching' _ ->
 			Format.fprintf ff "@,%a" (print_skel sem) s
 	| _ -> Format.fprintf ff " %a" (print_skel sem) s
 	end
 and print_skel sem ff s =
 	begin match s with
-	| Return t ->
+	| Return' t ->
 			Format.fprintf ff "M.ret %a" (print_term_protect sem) t
-	| Apply (f, _, []) ->
+	| Apply' (f, _, []) ->
 			Format.fprintf ff "M.ret %a%s" print_from f.tv_src f.tv_name
-	| Apply (f, _, q) when !debug ->
+	| Apply' (f, _, q) when !debug ->
 			Format.fprintf ff "apply%d \"%s\" %a%s %a"
 			(List.length q) f.tv_name print_from f.tv_src f.tv_name
 			(Util.print_list ~sep:" " (print_term_protect sem)) q
-	| Apply (f, _, q) ->
+	| Apply' (f, _, q) ->
 			Format.fprintf ff "apply%d %a%s %a" (List.length q)
 			print_from f.tv_src f.tv_name
 			(Util.print_list ~sep:" " (print_term_protect sem)) q
-	| LetIn (None, p, s1, s2) ->
+	| LetIn' (None, p, s1, s2) ->
 		if is_tuple_var p then
 			Format.fprintf ff "@[<v 2>let* %a =%ain@,%a"
 			print_pattern p (print_bind_skel sem) s1
 			(print_skel sem) s2
 		else if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
 			begin match s1 with
-			| Return t ->
+			| Return' t ->
 				Format.fprintf ff
 				"@[<v>@[<v 2>begin match%awith@,\
 					| @[<v>%a ->\
@@ -241,7 +285,7 @@ and print_skel sem ff s =
 		else
 			(* FIXME *)
 			begin match s1 with
-			| Return t ->
+			| Return' t ->
 			Format.fprintf ff
 			"@[<v>@[<v 2>begin match %a with@,\
 				| @[<v>%a ->%a@]@,\
@@ -257,15 +301,15 @@ and print_skel sem ff s =
 				end@]"
 			!tmp (print_bind_skel sem) s1 !tmp print_pattern p (print_ret_skel sem) s2
 			end
-	| LetIn (Some (from, m, ta), p, s1, s2) when !debug ->
+	| LetIn' (Some (from, m, ta), p, s1, s2) when !debug ->
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 \"%a%s\" %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 print_from from m print_from from m !tmp
 			print_pattern p (print_skel sem) s2
-	| LetIn (Some (from, m, ta), p, s1, s2) ->
+	| LetIn' (Some (from, m, ta), p, s1, s2) ->
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 print_from from m !tmp
 			print_pattern p (print_skel sem) s2
-	| Branching (_, outs) ->
+	| Branching' (_, outs) ->
 				begin match branch_to_match sem outs with
 				| Some txt -> Format.fprintf ff "%t" txt
 				| None ->
@@ -281,7 +325,7 @@ and branch_to_match sem outs =
 	let rec aux a s1 =
 		begin function
 		| [] -> Some []
-		| LetIn (a', p, s1', s2) :: q
+		| LetIn' (a', p, s1', s2) :: q
 			when a = a' && s1 = s1' ->
 				Option.bind (aux a s1 q) (fun l -> Some ((p, s2) :: l))
 		| _ -> None
@@ -289,7 +333,7 @@ and branch_to_match sem outs =
 	in
 	begin match outs with
 	| [] -> Some (fun ff -> Format.fprintf ff "M.fail \"\"")
-	| LetIn (a, p, s1, s2) :: q ->
+	| LetIn' (a, p, s1, s2) :: q ->
 			begin match aux a s1 q with
 			| None -> None
 			| Some l ->
@@ -302,7 +346,7 @@ and branch_to_match sem outs =
 						exhaustive_disjoint sem (Skeleton.pattern_typ p) (List.map fst patterns)
 					in
 					begin match disjoint (), exhaustive (), s1 with
-					| true, true, Return t ->
+					| true, true, Return' t ->
 						Some (fun ff ->
 							Format.fprintf ff "@[<v 0>@[<v 2>begin match%awith@,%a@,end@]"
 							(print_bind_term sem) t
@@ -317,7 +361,7 @@ and branch_to_match sem outs =
 							(Format.pp_print_list (fun ff (pat, skel) ->
 								Format.fprintf ff "@[<v 4>| %a ->%a@]" print_pattern pat
 							(print_ret_skel sem) skel)) patterns)
-					| true, false, Return t ->
+					| true, false, Return' t ->
 						Some (fun ff ->
 							Format.fprintf ff "@[<v 2>begin match %a with@,\
 							%a@,| _ -> M.fail \"\"@,end"
@@ -360,7 +404,9 @@ let print_term_definitions breakpoints ff sem =
 		sem.ss_terms
 		|> Util.SMap.bindings
 		|> List.filter_map (begin function
-			| (name, (c, ta, ty, Some t)) -> Some (name, ta, ty, t, c)
+			| (name, (c, ta, ty, Some t)) ->
+					let open Util in
+					Some (name, ta, ty, term'_of_term (contents t), Option.map contents c)
 			| _ -> None
 			end)
 	in
@@ -373,7 +419,7 @@ let print_term_definitions breakpoints ff sem =
 	let print_term_aux name sem ff t =
 		if List.mem name breakpoints then
 			begin match t with
-			| TFunc (x, _, s) ->
+			| TFunc' (x, _, s) ->
 					Format.fprintf ff "begin function %s ->@,@[<v 2>  %s@,%s@,%a@]@,end" x
 					("let _ = print_endline \"Call to " ^ name ^ ". Current stack :\" in")
 					("let _ = Stdlib.List.iter print_endline !stack in")
@@ -429,7 +475,7 @@ let (print_type_decls, print_type_decls_ski) =
 			sem.ss_types
 			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
 			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, ty, _)) -> (c, ty))
+			|> List.map (fun (x, (c, ty, _)) -> (Option.map Util.contents c, ty))
 		in
 		Util.print_list print_type_with_comment ff ts end,
 		begin fun ff ski ->
@@ -437,7 +483,7 @@ let (print_type_decls, print_type_decls_ski) =
 			ski.ski_types
 			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
 			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, ty, _)) -> (c, ty))
+			|> List.map (fun (x, (c, ty, _)) -> (Option.map Util.contents c, ty))
 		in
 		Util.print_list print_type_with_comment ff ts end
 	)
@@ -464,7 +510,7 @@ let print_term_signatures ~all ff sem =
 	if all_sigs <> [] then
 			Format.fprintf ff "\n@,%a"
 			(Format.pp_print_list (fun ff (name, (c, _, ty,_)) ->
-				print_term_sig ff c name ty)) all_sigs
+				print_term_sig ff (Option.map Util.contents c) name ty)) all_sigs
 
 let print_term_signatures_ski ff ski =
 	(* Prints the signature of a term *)
@@ -515,10 +561,10 @@ let (print_specified_types, print_spec_types_ski) =
 		begin match c.cs_input_type with
 		| Product [] ->
 				Format.fprintf ff "| %s%a"
-				c.cs_name print_com c.cs_comment
+				c.cs_name print_com (Option.map Util.contents c.cs_comment)
 		| ty ->
 				Format.fprintf ff "| %s of %a%a"
-				c.cs_name print ty print_com c.cs_comment
+				c.cs_name print ty print_com (Option.map Util.contents c.cs_comment)
 		end
 	in
 	(begin fun ~comm ff ss ->
@@ -527,7 +573,7 @@ let (print_specified_types, print_spec_types_ski) =
 			begin match c with
 			| None -> ()
 			| Some c ->
-					Format.fprintf ff "@,%a" print_comment c
+					Format.fprintf ff "@,%a" print_comment (Util.contents c)
 			end
 	in
 	let const = Skeleton.get_constructors_by_type ss in
@@ -598,16 +644,16 @@ let print_aliases ff ss =
 			ff (name, (c, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "%atype %a = %a"
-				print_comment c
-				pp_print_type (Base ([], name, true, ta')) pp_print_type ty
+				print_comment (Option.map Util.contents c)
+				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ss.ss_aliases)
 	| false ->
 		Format.pp_print_list ~pp_sep:(fun ff () -> ()) (fun
 			ff (name, (c, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "@,%aand %a = %a"
-				print_comment c
-				pp_print_type (Base ([], name, true, ta')) pp_print_type ty
+				print_comment (Option.map Util.contents c)
+				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ss.ss_aliases)
 	end
 
@@ -626,16 +672,16 @@ let print_aliases_ski ff ski =
 			ff (name, (c, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "%atype %a = %a"
-				print_comment c
-				pp_print_type (Base ([], name, true, ta')) pp_print_type ty
+				print_comment (Option.map Util.contents c)
+				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ski.ski_aliases)
 	| false ->
 		Format.pp_print_list ~pp_sep:(fun ff () -> ()) (fun
 			ff (name, (c, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "@,%aand %a = %a"
-				print_comment c
-				pp_print_type (Base ([], name, true, ta')) pp_print_type ty
+				print_comment (Option.map Util.contents c)
+				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ski.ski_aliases)
 	end
 
@@ -790,8 +836,9 @@ let print_interpreter_module_type sem ski ff =
 
 let build_map includes ss =
 	let rec aux map (i, s) =
-		let incl = Util.SMap.bindings s.ski_includes in
-		let map = Util.SMap.add i (List.map fst incl) map in
+		let open Util in
+		let incl = SMap.bindings (SMap.map contents s.ski_includes) in
+		let map = SMap.add i (List.map fst incl) map in
 		List.fold_left aux map incl
 	in
 	let () = dep_map := aux Util.SMap.empty ("this", Skeleton.ski_of_ss ss) in
@@ -802,25 +849,25 @@ let generate_interpreter includes sem ski breakpoints: string =
 	let () = debug := breakpoints <> [] in
 	let rec apply_max =
 		begin function
-		| TFunc (_, _, s) -> apply_max_skel s
+		| TFunc' (_, _, s) -> apply_max_skel s
 		| _ -> 0
 		end
 	and apply_max_skel =
 		begin function
-		| Branching (_, sl) -> List.fold_left max 0 (List.map apply_max_skel sl)
-		| LetIn (Some _, _, s1, s2) ->
+		| Branching' (_, sl) -> List.fold_left max 0 (List.map apply_max_skel sl)
+		| LetIn' (Some _, _, s1, s2) ->
 				max 2
 				(max (apply_max_skel s1) (apply_max_skel s2))
-		| LetIn (None, _, s1, s2) -> max (apply_max_skel s1) (apply_max_skel s2)
-		| Return t -> apply_max t
-		| Apply (_, _, l1) -> List.length l1
+		| LetIn' (None, _, s1, s2) -> max (apply_max_skel s1) (apply_max_skel s2)
+		| Return' t -> apply_max t
+		| Apply' (_, _, l1) -> List.length l1
 		end
 	in
 	let apply_max =
 		Util.SMap.fold (fun _ (_, _, _, o) i ->
 			begin match o with
 			| None -> i
-			| Some t -> max (apply_max t) i
+			| Some t -> max (apply_max (term'_of_term (Util.contents t))) i
 			end) sem.ss_terms 0
 	in
 	let ok x =
