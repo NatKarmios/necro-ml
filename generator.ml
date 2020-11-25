@@ -261,8 +261,21 @@ let rec print_term sem ff =
 	| TFunc' (x, _, s) ->
 			Format.fprintf ff "begin function %s ->@,@[<v 2>  %a@]@,end" x
 			(print_skel sem) s
-	| TField' (t, _, (from, f, _)) ->
-			Format.fprintf ff "%a.%a%s" (print_term sem) t print_from from f
+	| TField' (t, ta, (from, f, _)) ->
+			begin match int_of_string_opt f with
+			| None -> Format.fprintf ff "%a.%a%s" (print_term sem) t print_from from f
+			| Some 1 when List.length ta = 2 ->
+					Format.fprintf ff "fst %a" (print_term_protect sem) t
+			| Some 2 when List.length ta = 2 ->
+					Format.fprintf ff "snd %a" (print_term_protect sem) t
+			| Some i ->
+					let l =
+						List.init (i-1) (fun _ -> "_") @
+						"x" :: List.init (List.length ta - i) (fun _ -> "_")
+					in
+					let pattern = String.concat ", " l in
+					Format.fprintf ff "let (%s) = %a in x" pattern (print_term sem) t
+			end
 	| TRecord' (None, tl) ->
 			Format.fprintf ff "{%a}" (Util.print_list ~sep:"; " print_record_field) tl
 	| TRecord' (Some t, tl) ->
