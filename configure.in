@@ -131,7 +131,7 @@ fi
 
 # Check OPAM
 AC_CHECK_PROG(OPAM, opam, opam, no)
-if test "OPAM" = no ; then
+if test "$OPAM" = no ; then
   AC_MSG_WARN(Cannot find opam, standalone build.)
   OPAMBINDIR=
   AC_MSG_RESULT(opam bin path is empty : OPAMBINDIR=$OPAMBINDIR)
