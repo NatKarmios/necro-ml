@@ -1,4 +1,4 @@
-# Necro Ml
+# Necro ML
 
 At this point the necroml package is not released in the official OPAM repository.
 
