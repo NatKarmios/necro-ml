@@ -688,9 +688,10 @@ let (print_specified_types, print_spec_types_ski) =
 					Format.fprintf ff ";@,") print_field) f)
 			(List.hd fields)
 				(Util.print_list ~sep:"" (fun ff (ty, f) ->
-					Format.fprintf ff "@,and %a =@,%a"
+					Format.fprintf ff "@,and %a = {@,%a@,}"
 					pp_print_type ty
-					(Format.pp_print_list print_field) f)) (List.tl fields) end,
+					(Format.pp_print_list ~pp_sep:(fun ff _ ->
+					Format.fprintf ff ";@,") print_field) f)) (List.tl fields) end,
 		begin fun ff ski ->
 	let get_constructors_and_fields_by_type ski =
 		Util.SMap.fold (fun _ (_, s,c) (lc, lf) ->
@@ -720,9 +721,10 @@ let (print_specified_types, print_spec_types_ski) =
 					Format.fprintf ff ";@,") print_field) f)
 			(List.hd fields)
 				(Util.print_list ~sep:"" (fun ff (ty, f) ->
-					Format.fprintf ff "@,and %a =@,%a"
+					Format.fprintf ff "@,and %a = {@,%a@,}"
 					pp_print_type ty
-					(Format.pp_print_list print_field) f)) (List.tl fields)
+					(Format.pp_print_list ~pp_sep:(fun ff _ ->
+					Format.fprintf ff ";@,") print_field) f)) (List.tl fields)
 		end)
 
 	(*
