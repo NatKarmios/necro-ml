@@ -396,7 +396,7 @@ and branch_to_match sem outs =
 	in
 	begin match outs with
 	| [] -> Some (fun ff -> Format.fprintf ff "M.fail \"\"")
-	| LetIn' (a, p, s1, s2) :: q ->
+	| LetIn' (a, p, s1, s2) :: q when a = None ->
 			begin match aux a s1 q with
 			| None -> None
 			| Some l ->
