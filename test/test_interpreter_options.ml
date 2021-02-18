@@ -58,6 +58,6 @@ let () =
       Assign("x", Const 0)
     )
   in
-  let s = stmt (initial_state(), t) in
+  let s = eval_stmt (initial_state(), t) in
   assert(Unspec.read ("x", get s) = Some (Int 0))
 

@@ -2,7 +2,7 @@ opam-version: "2.0.2"
 
 name: "necroml"
 
-version: "1.3.1"
+version: "2.0.0"
 
 maintainer: "Louis Noizet <louis.noizet@irisa.fr>"
 
@@ -44,6 +44,6 @@ depends: [
 ]
 
 url {
- src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v1.3.1/necro-ml-v1.3.1.tar.gz"
- checksum: "md5=8b7be4c9b4a0383554dfb5b50beaff22"
+ src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v2.0.0/necro-ml-v2.0.0.tar.gz"
+ checksum: "md5=e03748b6837996e0639a08b35cd017ac"
 }
