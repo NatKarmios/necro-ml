@@ -31,7 +31,7 @@ let interpretation' =
 		letin_interp' = (fun a b c d ->
 			begin match a with
 			| None -> LetIn' (None, b, c, d)
-			| Some (x, y, z) -> LetIn' (Some (x, y.contents, z), b, c, d)
+			| Some (x, y, z, _) -> LetIn' (Some (x, y.contents, z), b, c, d)
 			end) ;
 		apply_interp' = (fun a b -> Apply' (a, b)) ;
 		merge_interp' = (fun a b -> Branching' (a, b)) ;
