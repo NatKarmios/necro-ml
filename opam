@@ -40,10 +40,10 @@ depends: [
   "ocamlfind"
   "menhir"
   "ocaml" {>= "4.09.0"}
-  "necrolib" {>= "2" & < "3"}
+  "necrolib" {>= "3.2.0" & < "4"}
 ]
 
 url {
  src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v2.0.0/necro-ml-v2.0.0.tar.gz"
- checksum: "md5=e03748b6837996e0639a08b35cd017ac"
+ checksum: "md5=e01c77cbe0798a35830867f156b8da0a"
 }

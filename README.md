@@ -36,16 +36,7 @@ path. If you installed from the sources, it is in the root directory.
 
 ## How to use it
 
-The `necroml` app produces an OCaml file, which is a module, like all OCaml files.
-For instance, when running `necroml myinput.sk -o myinput.ml`, a `myinput.ml` file will be created, which can be referred as a `Myinput` module in another OCaml file.
+See [MORE.md](MORE.md) if you want a walk-through on how to use Necro ML.
 
-This module contains a `MakeInterpreter` functor that needs an input module and outputs another module which is the interpreter.
-After writing this module, the user can call the functor to create the interpreter :
-
-```ocaml
-module Interp = Myinput.MakeInterpreter(I)
-```
-
-After that, the user can build terms with the interpreter's constructors, and evaluate them with the specified terms.
-Do not hesitate having a look at the examples in the [test](test) folder.
+Do not hesitate to have a look at the examples in the [test](test) folder.
 
