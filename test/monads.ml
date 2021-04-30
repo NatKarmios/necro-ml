@@ -139,25 +139,3 @@ module Bfs = struct
 			end
 	let apply f x = Apply (f, x)
 end
-
-module Debug = struct
-	type 'a with_print = {cont: 'a; print: 'a -> string}
-	type 'a t =
-		| Ret : 'a with_print -> 'a t
-		| Bind : ('b t * ('b -> 'a t)) -> 'a t
-		| Branch: (unit -> 'a t) list -> 'a t
-		| Apply : ('a with_print -> 'b t) * 'a with_print -> 'b t
-	let ret x = Ret x
-	let branch l = Branch l
-	let fail _ = branch []
-  let bind x f = Bind (x, f)
-	let rec eval_step : type a. a t -> a t =
-		begin function
-		| Ret x -> Ret x
-		| Bind (Ret x, f) -> f x.cont
-		| Bind (x, f) -> Bind (eval_step x, f)
-		| Apply (f, x) -> f x
-		| Branch l -> Branch []
-		end
-	let apply f x = Apply (f, x)
-end
