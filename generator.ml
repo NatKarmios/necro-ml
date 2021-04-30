@@ -6,44 +6,6 @@ open Skeltypes
 (* =====                Forget locations                 ===== *)
 (* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
 
-type value' =
-	| TVar' of typed_var
-	| TConstr' of constructor * necro_type list * value'
-	| TTuple' of value' list
-	| TFunc' of string * necro_type * skeleton'
-	| TField' of value' * necro_type list * constructor
-	| TRecord' of value' option * (constructor * necro_type list * value') list
-
-and skeleton' =
-	| Branching' of necro_type * skeleton' list
-	| LetIn' of (from * string * necro_type list) option * pattern * skeleton' * skeleton'
-	| Return' of value'
-	| Apply' of value' * value' list
-
-let interpretation' =
-	let open Interpretation in {
-		var_interp' = (fun a -> TVar' a) ;
-		constr_interp' = (fun a b c -> TConstr' (a, b, c)) ;
-		tuple_interp' = (fun a -> TTuple' a) ;
-		function_interp' = (fun a b c -> TFunc' (a, b, c)) ;
-		field_interp' = (fun a b c -> TField' (a, b, c)) ;
-		record_interp' = (fun a b -> TRecord' (a, b)) ;
-		letin_interp' = (fun a b c d ->
-			begin match a with
-			| None -> LetIn' (None, b, c, d)
-			| Some (x, y, z, _) -> LetIn' (Some (x, y.contents, z), b, c, d)
-			end) ;
-		apply_interp' = (fun a b -> Apply' (a, b)) ;
-		merge_interp' = (fun a b -> Branching' (a, b)) ;
-		return_interp' = (fun a -> Return' a) ;
-		exists_interp' = (fun _ _ _ ->
-			failwith "Existentials are not supported by Necro ML yet")
-	}
-
-let (value'_of_value, skel'_of_skel) =
-	let open Interpretation in
-	(interpret_value' interpretation', interpret_skeleton' interpretation')
-
 
 (* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
 (* =====          Parameters & useful functions          ===== *)
@@ -200,7 +162,7 @@ let print_loc =
 let rec get_from_ski from ski =
 	begin match from with
 	| [] -> ski
-	| a :: q -> get_from_ski q (Util.SMap.find a ski.ski_includes).contents
+	| a :: q -> get_from_ski q (Util.SMap.find a ski.ski_includes)
 	end
 
 let rec print_pattern sem ff p =
@@ -238,10 +200,10 @@ let rec print_value sem ff =
 		Format.fprintf ff "%a%s = %a" print_from from c (print_value sem) t
 	in
 	begin function
-	| TVar' (TVLet (n, _)) -> Format.fprintf ff "%s" n
-	| TVar' (TVValue (f, n, _, _)) ->
+	| TVar (TVLet (n, _)) -> Format.fprintf ff "%s" n
+	| TVar (TVValue (f, n, _, _)) ->
 			Format.fprintf ff "%a%s" print_from f n
-	| TConstr' ((from, c, ty), _, TTuple' []) ->
+	| TConstr ((from, c, ty), _, TTuple []) ->
 			let f, ty =
 				begin match Skeleton.unalias ty with
 				| Base (f, ty, _, _) -> f, ty
@@ -256,14 +218,14 @@ let rec print_value sem ff =
 				Format.fprintf ff "%a%s" print_from from c
 			else
 				Format.fprintf ff "%a%s ()" print_from from c
-	| TConstr' ((from, c, _), _, t) ->
+	| TConstr ((from, c, _), _, t) ->
 			Format.fprintf ff "%a%s %a" print_from from c (print_value_protect sem) t
-	| TTuple' tl ->
+	| TTuple tl ->
 			Format.fprintf ff "(%a)" (Util.print_list ~sep:", " (print_value sem)) tl
-	| TFunc' (x, _, s) ->
+	| TFunc (x, _, s) ->
 			Format.fprintf ff "begin function %s ->@,@[<v 2>  %a@]@,end" x
 			(print_skel sem) s
-	| TField' (t, ta, (from, f, _)) ->
+	| TField (t, ta, (from, f, _)) ->
 			begin match int_of_string_opt f with
 			| None -> Format.fprintf ff "%a.%a%s" (print_value sem) t print_from from f
 			| Some 1 when List.length ta = 2 ->
@@ -278,57 +240,57 @@ let rec print_value sem ff =
 					let pattern = String.concat ", " l in
 					Format.fprintf ff "let (%s) = %a in x" pattern (print_value sem) t
 			end
-	| TRecord' (None, tl) ->
+	| TRecord (None, tl) ->
 			Format.fprintf ff "{%a}" (Util.print_list ~sep:"; " print_record_field) tl
-	| TRecord' (Some t, tl) ->
+	| TRecord (Some t, tl) ->
 			Format.fprintf ff "{%a with %a}"
 			(print_value sem) t (Util.print_list ~sep:"; " print_record_field) tl
 	end
 
 and print_value_protect sem ff t =
 	begin match t with
-	| TVar' _ | TTuple' _ | TConstr' (_, _, TTuple' []) ->
+	| TVar _ | TTuple _ | TConstr (_, _, TTuple []) ->
 			print_value sem ff t
 	| _ -> Format.fprintf ff "(%a)" (print_value sem) t
 	end
 
 and print_bind_skel sem ff s =
 	begin match s with
-	| LetIn' _ | Return' (TFunc' _)
-	| Apply' (_, _ :: _ :: _) | Branching' _ ->
+	| LetIn _ | Return (TFunc _)
+	| Apply (_, _ :: _ :: _) | Branching _ ->
 			Format.fprintf ff "@,%a@]@," (print_skel sem) s
 	| _ -> Format.fprintf ff " %a@] " (print_skel sem) s
 	end
 and print_bind_value sem ff s =
 	begin match s with
-	| TFunc' _ -> assert false
+	| TFunc _ -> assert false
 	| _ -> Format.fprintf ff " %a@] " (print_value sem) s
 	end
 and print_ret_skel sem ff s =
 	begin match s with
-	| LetIn' _ | Return' (TFunc' _)
-	| Apply' (_, _ :: _ :: _) | Branching' _ ->
+	| LetIn _ | Return (TFunc _)
+	| Apply (_, _ :: _ :: _) | Branching _ ->
 			Format.fprintf ff "@,%a" (print_skel sem) s
 	| _ -> Format.fprintf ff " %a" (print_skel sem) s
 	end
 and print_skel sem ff s =
 	begin match s with
-	| Return' t ->
+	| Return t ->
 			Format.fprintf ff "M.ret %a" (print_value_protect sem) t
-	| Apply' (t, []) ->
+	| Apply (t, []) ->
 			Format.fprintf ff "M.ret %a" (print_value_protect sem) t
-	| Apply' (f, q) ->
+	| Apply (f, q) ->
 			Format.fprintf ff "apply%d %a %a" (List.length q)
 			(print_value_protect sem) f
 			(Util.print_list ~sep:" " (print_value_protect sem)) q
-	| LetIn' (None, p, s1, s2) ->
+	| LetIn (None, p, s1, s2) ->
 		if is_tuple_var p then
 			Format.fprintf ff "@[<v 2>let* %a =%ain@,%a"
 			(print_pattern sem) p (print_bind_skel sem) s1
 			(print_skel sem) s2
 		else if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
 			begin match s1 with
-			| Return' t ->
+			| Return t ->
 				Format.fprintf ff
 				"@[<v>@[<v 2>begin match%awith@,\
 					| @[<v>%a ->\
@@ -346,7 +308,7 @@ and print_skel sem ff s =
 		else
 			(* FIXME *)
 			begin match s1 with
-			| Return' t ->
+			| Return t ->
 			Format.fprintf ff
 			"@[<v>@[<v 2>begin match %a with@,\
 				| @[<v>%a ->%a@]@,\
@@ -362,11 +324,11 @@ and print_skel sem ff s =
 				end@]"
 			!tmp (print_bind_skel sem) s1 !tmp (print_pattern sem) p (print_ret_skel sem) s2
 			end
-	| LetIn' (Some (from, m, ta), p, s1, s2) ->
+	| LetIn (Some (from, m, ta, _), p, s1, s2) ->
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 print_from from m !tmp
 			(print_pattern sem) p (print_skel sem) s2
-	| Branching' (_, outs) ->
+	| Branching (_, outs) ->
 				begin match branch_to_match sem outs with
 				| Some txt -> Format.fprintf ff "%t" txt
 				| None ->
@@ -376,13 +338,14 @@ and print_skel sem ff s =
 								Format.fprintf ff "@[<v 2>(fun () ->@,%t)@]"
 							)) (List.map (fun s ff -> Format.fprintf ff "%a" (print_skel sem) s) outs)
 				end
+	| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
 	end
 
 and branch_to_match sem outs =
 	let rec aux a s1 =
 		begin function
 		| [] -> Some []
-		| LetIn' (a', p, s1', s2) :: q
+		| LetIn (a', p, s1', s2) :: q
 			when a = a' && s1 = s1' ->
 				Option.bind (aux a s1 q) (fun l -> Some ((p, s2) :: l))
 		| _ -> None
@@ -390,7 +353,7 @@ and branch_to_match sem outs =
 	in
 	begin match outs with
 	| [] -> Some (fun ff -> Format.fprintf ff "M.fail \"\"")
-	| LetIn' (a, p, s1, s2) :: q when a = None ->
+	| LetIn (a, p, s1, s2) :: q when a = None ->
 			begin match aux a s1 q with
 			| None -> None
 			| Some l ->
@@ -403,7 +366,7 @@ and branch_to_match sem outs =
 						exhaustive_disjoint sem (Skeleton.pattern_typ p) (List.map fst patterns)
 					in
 					begin match disjoint (), exhaustive (), s1 with
-					| true, true, Return' t ->
+					| true, true, Return t ->
 						Some (fun ff ->
 							Format.fprintf ff "@[<v 0>@[<v 2>begin match%awith@,%a@,end@]"
 							(print_bind_value sem) t
@@ -418,7 +381,7 @@ and branch_to_match sem outs =
 							(Format.pp_print_list (fun ff (pat, skel) ->
 								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
 							(print_ret_skel sem) skel)) patterns)
-					| true, false, Return' t ->
+					| true, false, Return t ->
 						Some (fun ff ->
 							Format.fprintf ff "@[<v 2>begin match %a with@,\
 							%a@,| _ -> M.fail \"\"@,end"
@@ -463,7 +426,7 @@ let print_value_definitions ff sem =
 		|> List.filter_map (begin function
 			| (name, (c, ta, ty, Some t)) ->
 					let open Util in
-					Some (name, ta, ty, value'_of_value (contents t), Option.map contents c)
+					Some (name, ta, ty, t, c)
 			| _ -> None
 			end)
 	in
@@ -519,7 +482,7 @@ let (print_type_decls, print_type_decls_ski) =
 			sem.ss_types
 			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
 			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, ty, _)) -> (Option.map Util.contents c, ty))
+			|> List.map (fun (x, (c, ty, _)) -> (c, ty))
 		in
 		Util.print_list print_type_with_comment ff ts end,
 		begin fun ff ski ->
@@ -527,7 +490,7 @@ let (print_type_decls, print_type_decls_ski) =
 			ski.ski_types
 			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
 			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, ty, _)) -> (Option.map Util.contents c, ty))
+			|> List.map (fun (x, (c, ty, _)) -> (c, ty))
 		in
 		Util.print_list print_type_with_comment ff ts end
 	)
@@ -554,7 +517,7 @@ let print_value_signatures ~all ff sem =
 	if all_sigs <> [] then
 			Format.fprintf ff "\n@,%a"
 			(Format.pp_print_list (fun ff (name, (c, _, ty,_)) ->
-				print_value_sig ff (Option.map Util.contents c) name ty)) all_sigs
+				print_value_sig ff c name ty)) all_sigs
 
 let print_value_signatures_ski ff ski =
 	(* Prints the signature of a value *)
@@ -605,10 +568,10 @@ let (print_specified_types, print_spec_types_ski) =
 		begin match c.s_input_type with
 		| Product [] ->
 				Format.fprintf ff "| %s%a"
-				c.s_name print_com (Option.map Util.contents c.s_comment)
+				c.s_name print_com c.s_comment
 		| ty ->
 				Format.fprintf ff "| %s of %a%a"
-				c.s_name print ty print_com (Option.map Util.contents c.s_comment)
+				c.s_name print ty print_com c.s_comment
 		end
 	in
 	let print_field ff c =
@@ -622,7 +585,7 @@ let (print_specified_types, print_spec_types_ski) =
 		begin match c.s_output_type with
 		| ty ->
 				Format.fprintf ff "  %s: %a%a"
-				c.s_name print ty print_com (Option.map Util.contents c.s_comment)
+				c.s_name print ty print_com c.s_comment
 		end
 	in
 	(begin fun ~comm ff ss ->
@@ -631,7 +594,7 @@ let (print_specified_types, print_spec_types_ski) =
 			begin match c with
 			| None -> ()
 			| Some c ->
-					Format.fprintf ff "@,%a" print_comment (Util.contents c)
+					Format.fprintf ff "@,%a" print_comment c
 			end
 	in
 	let const = Skeleton.get_constructors_by_type ss in
@@ -733,7 +696,7 @@ let print_aliases ff ss =
 			ff (name, (c, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "%atype %a = %a"
-				print_comment (Option.map Util.contents c)
+				print_comment c
 				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ss.ss_aliases)
 	| false ->
@@ -741,7 +704,7 @@ let print_aliases ff ss =
 			ff (name, (c, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "@,%aand %a = %a"
-				print_comment (Option.map Util.contents c)
+				print_comment c
 				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ss.ss_aliases)
 	end
@@ -761,7 +724,7 @@ let print_aliases_ski ff ski =
 			ff (name, (c, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "%atype %a = %a"
-				print_comment (Option.map Util.contents c)
+				print_comment c
 				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ski.ski_aliases)
 	| false ->
@@ -769,7 +732,7 @@ let print_aliases_ski ff ski =
 			ff (name, (c, ta, ty)) ->
 				let ta' = List.map (fun a -> Variable a) ta in
 				Format.fprintf ff "@,%aand %a = %a"
-				print_comment (Option.map Util.contents c)
+				print_comment c
 				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
 			) ff (Util.SMap.bindings ski.ski_aliases)
 	end
@@ -906,7 +869,7 @@ let print_interpreter_module_type sem ski ff =
 let build_map includes ss =
 	let rec aux map (i, s) =
 		let open Util in
-		let incl = SMap.bindings (SMap.map contents s.ski_includes) in
+		let incl = SMap.bindings s.ski_includes in
 		let map = SMap.add i (List.map fst incl) map in
 		List.fold_left aux map incl
 	in
@@ -917,25 +880,26 @@ let build_map includes ss =
 let generate_interpreter includes sem ski: string =
 	let rec apply_max =
 		begin function
-		| TFunc' (_, _, s) -> apply_max_skel s
+		| TFunc (_, _, s) -> apply_max_skel s
 		| _ -> 0
 		end
 	and apply_max_skel =
 		begin function
-		| Branching' (_, sl) -> List.fold_left max 0 (List.map apply_max_skel sl)
-		| LetIn' (Some _, _, s1, s2) ->
+		| Branching (_, sl) -> List.fold_left max 0 (List.map apply_max_skel sl)
+		| LetIn (Some _, _, s1, s2) ->
 				max 2
 				(max (apply_max_skel s1) (apply_max_skel s2))
-		| LetIn' (None, _, s1, s2) -> max (apply_max_skel s1) (apply_max_skel s2)
-		| Return' t -> apply_max t
-		| Apply' (_, l1) -> List.length l1
+		| LetIn (None, _, s1, s2) -> max (apply_max_skel s1) (apply_max_skel s2)
+		| Return t -> apply_max t
+		| Apply (_, l1) -> List.length l1
+		| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
 		end
 	in
 	let apply_max =
 		Util.SMap.fold (fun _ (_, _, _, o) i ->
 			begin match o with
 			| None -> i
-			| Some t -> max (apply_max (value'_of_value (Util.contents t))) i
+			| Some t -> max (apply_max t) i
 			end) sem.ss_values 0
 	in
 	let ok x =
