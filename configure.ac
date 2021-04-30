@@ -32,7 +32,8 @@
 
 # check for one particular file of the sources 
 # ADAPT THE FOLLOWING LINE TO YOUR SOURCES!
-AC_INIT(necroml.ml)
+AC_INIT
+AC_CONFIG_SRCDIR([necroml.ml])
 
 # Check for Ocaml compilers
 
@@ -165,5 +166,6 @@ AC_SUBST(OPAM)
 AC_SUBST(NECROLIB)
 
 # Finally create the Makefile from Makefile.in
-AC_OUTPUT(Makefile)
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
 chmod a-w Makefile
