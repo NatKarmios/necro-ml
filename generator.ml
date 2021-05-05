@@ -201,7 +201,7 @@ let rec print_value sem ff =
 	in
 	begin function
 	| TVar (TVLet (n, _)) -> Format.fprintf ff "%s" n
-	| TVar (TVValue (f, n, _, _)) ->
+	| TVar (TVValue (_, f, n, _, _)) ->
 			Format.fprintf ff "%a%s" print_from f n
 	| TConstr ((from, c, ty), _, TTuple []) ->
 			let f, ty =
@@ -324,7 +324,7 @@ and print_skel sem ff s =
 				end@]"
 			!tmp (print_bind_skel sem) s1 !tmp (print_pattern sem) p (print_ret_skel sem) s2
 			end
-	| LetIn (Some (from, m, ta, _), p, s1, s2) ->
+	| LetIn (Some (_, from, m, ta, _), p, s1, s2) ->
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 print_from from m !tmp
 			(print_pattern sem) p (print_skel sem) s2
@@ -530,7 +530,7 @@ let print_value_signatures_ski ff ski =
 	in
 	if all_sigs <> [] then
 			Format.fprintf ff "\n@,%a"
-			(Format.pp_print_list (fun ff (name, (c, _, ty)) ->
+			(Format.pp_print_list (fun ff (name, (_, c, _, ty)) ->
 				print_value_sig ff c name ty)) all_sigs
 
 let print_values_not_implemented ff sem =
