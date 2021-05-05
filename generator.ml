@@ -280,7 +280,16 @@ and print_skel sem ff s =
 	| Apply (t, []) ->
 			Format.fprintf ff "M.ret %a" (print_value_protect sem) t
 	| Apply (f, q) ->
-			Format.fprintf ff "apply%d %a %a" (List.length q)
+			let kind =
+				begin match f with
+				| TVar (TVValue (Unspec, f, n, _, _)) ->
+						Format.asprintf "(M.Unspec \"%a%s\")" print_from f n
+				| TVar (TVValue (Spec, f, n, _, _)) ->
+						Format.asprintf "(M.Spec \"%a%s\")" print_from f n
+				| _ -> "M.Anon"
+				end
+			in
+			Format.fprintf ff "apply%d %s %a %a" (List.length q) kind
 			(print_value_protect sem) f
 			(Util.print_list ~sep:" " (print_value_protect sem)) q
 	| LetIn (None, p, s1, s2) ->
@@ -324,9 +333,15 @@ and print_skel sem ff s =
 				end@]"
 			!tmp (print_bind_skel sem) s1 !tmp (print_pattern sem) p (print_ret_skel sem) s2
 			end
-	| LetIn (Some (_, from, m, ta, _), p, s1, s2) ->
-			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %a%s %s (function %a ->@,%a)"
-			!tmp (print_bind_skel sem) s1 print_from from m !tmp
+	| LetIn (Some (k, from, m, ta, _), p, s1, s2) ->
+			let kind =
+				Format.asprintf "(%s \"%a%s\")"
+				(if k = Unspec then "Unspec" else "Spec")
+				print_from from
+				m
+			in
+			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %s %a%s %s (function %a ->@,%a)"
+			!tmp (print_bind_skel sem) s1 kind print_from from m !tmp
 			(print_pattern sem) p (print_skel sem) s2
 	| Branching (_, outs) ->
 				begin match branch_to_match sem outs with
@@ -786,7 +801,8 @@ module type MONAD = sig
   val branch: (unit -> 'a t) list -> 'a t
   val bind: 'a t -> ('a -> 'b t) -> 'b t
   val fail: string -> 'a t
-  val apply: ('a -> 'b t) -> 'a -> 'b t
+  type kind = | Anon | Spec of string | Unspec of string
+  val apply: kind -> ('a -> 'b t) -> 'a -> 'b t
 end|}
 
 let print_args ff sem =
@@ -805,12 +821,12 @@ let print_applys ff apply_max =
 	in
 	if apply_max <> 0 then
 	Format.fprintf ff "\n@,%s%a"
-	"let apply1 f x = M.apply f x"
+	"let apply1 k f x = M.apply k f x"
 	(Util.print_list (fun ff i ->
 		Format.fprintf ff
-		"@,@[<v 2>let apply%d f x0 %a =@,\
-		let* _tmp = f x0 in@,\
-		apply%d _tmp %a@]"
+		"@,@[<v 2>let apply%d k f x0 %a =@,\
+		let* _tmp = apply1 k f x0 in@,\
+		apply%d M.Anon _tmp %a@]"
 		i print_x1xn (i-1) (i-1) print_x1xn (i-1)))
 	(List.init (apply_max - 1) ((+)2))
 
