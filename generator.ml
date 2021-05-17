@@ -803,6 +803,7 @@ module type MONAD = sig
   val fail: string -> 'a t
   type kind = | Anon | Spec of string | Unspec of string
   val apply: kind -> ('a -> 'b t) -> 'a -> 'b t
+  val extract: 'a t -> 'a
 end|}
 
 let print_args ff sem =

@@ -12,6 +12,7 @@ module ID = struct
 	let fail s = raise (Branch_fail s)
 	let bind x f = f x
 	let apply _ f x = f x
+	let extract x = x
 end
 
 module Rand = struct
@@ -51,6 +52,7 @@ module Rand = struct
 				end
 		end
 	let apply _ f x = f x
+	let extract x = x
 end
 
 module List = struct
@@ -68,6 +70,11 @@ module List = struct
 	| a :: q -> union_two a (union q)
 	let bind l f = union (List.map f l)
 	let apply _ f x = f x
+	let extract x =
+		begin match x with
+		| a :: q -> a
+		| [] -> failwith "No result"
+		end
 end
 
 module Cont = struct
@@ -84,6 +91,10 @@ module Cont = struct
 		| b :: bs ->
 			(b ()) k (fun _ -> branch bs k fcont)
 	let apply _ f x = f x
+	let extract (x: 'a t) =
+		let y = ref (Obj.magic 0: 'a) in
+		let () = x (fun a _ -> y:=a) (fun s -> failwith s) in
+		!y
 end
 
 module ContPoly = struct
@@ -100,6 +111,8 @@ module ContPoly = struct
 		| [] -> fcont "No branch matches"
 		| b :: bs -> (b ()).cont k (fun _ -> (branch bs).cont k fcont) }
 	let apply _ f x = f x
+	let extract x =
+		x.cont (fun a _ -> a) (fun s -> failwith s)
 end
 
 module Bfs = struct
@@ -143,4 +156,5 @@ module Bfs = struct
 			| y -> let y' = repeat i eval_step y in eval ~i:(i + 1) y'
 			end
 	let apply _ f x = Apply (f, x)
+	let extract x = eval x
 end
