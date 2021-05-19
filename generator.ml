@@ -938,7 +938,7 @@ let generate_interpreter includes sem ski: string =
 		(print_types_module_type sem) (* module type TYPES *)
 		(print_monad_module_type sem) (* module type MONAD *)
 		(print_unspec_module_type sem) (* module type UNSPEC *)
-		(print_makeinterpreter_functor apply_max sem) (* module MakeInterpreter (F: UNSPEC) …*)
 		(print_unspec_functor sem) (* module Unspec (M:MONAD) (T:TYPES) *)
 		(print_interpreter_module_type sem ski) (* module type INTERPRETER *)
+		(print_makeinterpreter_functor apply_max sem) (* module MakeInterpreter (F: UNSPEC) …*)
 	in Format.flush_str_formatter ()
