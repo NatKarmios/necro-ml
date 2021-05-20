@@ -162,7 +162,8 @@ let print_loc =
 let rec get_from_ski from ski =
 	begin match from with
 	| [] -> ski
-	| a :: q -> get_from_ski q (Util.SMap.find a ski.ski_includes)
+	| a :: q ->
+			Util.SMap.find a ski.ski_includes |> fst |> get_from_ski q 
 	end
 
 let rec print_pattern sem ff p =
@@ -798,8 +799,8 @@ let print_monad_module_type sem ff =
 module type MONAD = sig
   type 'a t
   val ret: 'a -> 'a t
-  val branch: (unit -> 'a t) list -> 'a t
   val bind: 'a t -> ('a -> 'b t) -> 'b t
+  val branch: (unit -> 'a t) list -> 'a t
   val fail: string -> 'a t
   type kind = | Anon | Spec of string | Unspec of string
   val apply: kind -> ('a -> 'b t) -> 'a -> 'b t
@@ -884,13 +885,13 @@ let print_interpreter_module_type sem ski ff =
 	(print_value_signatures_ski) ski
 
 let build_map includes ss =
-	let rec aux map (i, s) =
+	let rec aux map (i, (s, _)) =
 		let open Util in
 		let incl = SMap.bindings s.ski_includes in
 		let map = SMap.add i (List.map fst incl) map in
 		List.fold_left aux map incl
 	in
-	let () = dep_map := aux Util.SMap.empty ("this", Skeleton.ski_of_ss ss) in
+	let () = dep_map := aux Util.SMap.empty ("this", (Skeleton.ski_of_ss ss, true)) in
 	()
 
 (* writes the interpreter generator modules to stdout *)
