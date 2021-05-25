@@ -147,7 +147,7 @@ ifeq ($(OPAM),opam)
 	@cp necroml $(OPAMBINDIR)/necroml
 	@mkdir $(OPAMLIBDIR)/necromonads
 	@echo 'archive(byte) = "necromonads.cma"' > $(OPAMLIBDIR)/necromonads/META
-	@cp necromonads.cma main/necromonads.cmi $(OPAMLIBDIR)/necromonads
+	@cp necromonads.cma necromonads.cmi $(OPAMLIBDIR)/necromonads
     endif
   endif
 endif
