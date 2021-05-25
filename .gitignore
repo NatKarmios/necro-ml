@@ -15,7 +15,7 @@ test/options.ml
 test/pcf.ml
 test/while.ml
 test/while_amb.ml
-*.cm[io]
+*.cm[ioa]
 Makefile
 config.log
 config.status

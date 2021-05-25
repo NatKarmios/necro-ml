@@ -18,8 +18,9 @@ includes that of `TYPES`
 
 The module type `MONAD` contains the necessary value for the interpretation
 monad, that is the way that the skeletons (for instance branches) are evaluated
-in your interpreter. You can check `test/monads.ml` which provides several
-standard choices.
+in your interpreter. You can check `necromonads.ml` which provides several
+standard choices. The `cma` version of this file is available with opam
+installation of Necro ML
 
 ## `module type UNSPEC`
 

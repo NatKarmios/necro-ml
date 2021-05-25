@@ -20,7 +20,7 @@ TESTS = $(addprefix test/,$(shell ls test))
 
 NAME := necro-ml
 # WARNING : GIT TAG is prefixed with "v"
-VERSION := 2.1.0
+VERSION := 2.1.1
 TGZ := $(NAME)-v$(VERSION).tar.gz
 MD5TXT := $(TGZ).md5sum.txt
 
@@ -38,9 +38,13 @@ OPAM_NAME := $(subst -,,$(NAME))
 #                       TARGET                                                           #
 ##########################################################################################
 
-all: necroml
+all: necroml necromonads.cma
 
-# This target manage stanalone local install but path to necrolib is asked
+necromonads.cma:
+	ocamlc -c necromonads.ml
+	ocamlc -a necromonads.cmo -o necromonads.cma
+
+# This target manage standalone local install but path to necrolib is asked
 necroml: generator.ml necroml.ml
 ifeq ($(NECROLIB),no)
 	@read -p "Please fill path to NECROLIB:" g;\
@@ -50,7 +54,7 @@ else
 endif
 
 clean:
-	@rm -f *.cm{i,o}  necroml  test/*.cm{i,o}  *.native  $(TGZ) $(MD5TXT) config.status config.log configure
+	@rm -f *.cm[ioa] necroml test/*.cm[io] *.native  $(TGZ) $(MD5TXT) config.status config.log configure
 	@rm -f test/{arith{,_list},brainfuck,concurrent,implicits,lambda,lists{,_list},miniml,nat,options,pcf,while{,_amb}}.ml
 	@rm -rf autom4te.cache
 	@make clean -C test/SudoKu > /dev/null
@@ -136,17 +140,20 @@ test: necroml Makefile $(TESTS)
 	@echo "Testing SudoKu"
 	@make test -C test/SudoKu > /dev/null
 
-opam_install_necroml : necroml
+opam_install_necroml : necroml necromonads.cma
 ifeq ($(OPAM),opam)
   ifneq ($(OPAMBINDIR),)
     ifneq ($(NECROLIB), no)
 	@cp necroml $(OPAMBINDIR)/necroml
+	@echo 'archive(byte) = "necromonads.cma"' > $(OPAMLIBDIR)/necromonads/META
+	@cp necromonads.cma main/necromonads.cmi $(OPAMLIBDIR)/necromonads
     endif
   endif
 endif
 
 opam_remove_necroml :
 	@rm -f  $(OPAMBINDIR)/necroml
+	@rm -rf $(OPAMLIBDIR)/necromonads
 
 # Download tarball from gitlab tag
 # Get its hashcode and store it in plain text file

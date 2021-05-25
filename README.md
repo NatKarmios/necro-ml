@@ -34,6 +34,8 @@ Then type `autoconf; ./configure; make`. It should ask for `necrolib`'s path.
 There is a single executable file `necroml`. If you used opam, it's in your
 path. If you installed from the sources, it is in the root directory.
 
+There is also a file with interpretation monads call necromonads.cma
+
 ## How to use it
 
 See [MORE.md](MORE.md) if you want a walk-through on how to use Necro ML.
