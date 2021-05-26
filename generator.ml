@@ -334,7 +334,8 @@ and print_skel sem ff s =
 				end@]"
 			!tmp (print_bind_skel sem) s1 !tmp (print_pattern sem) p (print_ret_skel sem) s2
 			end
-	| LetIn (Some (k, from, m, ta, _), p, s1, s2) ->
+	| LetIn (Some (k, from, m, ta, _), p, s1, s2)
+		when is_exhaustive sem (Skeleton.pattern_typ p) [p] ->
 			let kind =
 				Format.asprintf "(%s \"%a%s\")"
 				(if k = Unspec then "Unspec" else "Spec")
@@ -344,6 +345,16 @@ and print_skel sem ff s =
 			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %s %a%s %s (function %a ->@,%a)"
 			!tmp (print_bind_skel sem) s1 kind print_from from m !tmp
 			(print_pattern sem) p (print_skel sem) s2
+	| LetIn (Some (k, from, m, ta, _), p, s1, s2) ->
+			let kind =
+				Format.asprintf "(%s \"%a%s\")"
+				(if k = Unspec then "Unspec" else "Spec")
+				print_from from
+				m
+			in
+			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %s %a%s %s (function _tmp ->@, %a)"
+			!tmp (print_bind_skel sem) s1 kind print_from from m !tmp (print_skel sem)
+			(LetIn (None, p, Return (TVar (TVLet ("_tmp",Product[]))), s2))
 	| Branching (_, outs) ->
 				begin match branch_to_match sem outs with
 				| Some txt -> Format.fprintf ff "%t" txt
