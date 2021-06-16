@@ -825,6 +825,13 @@ let print_args ff sem =
 	in
 	Util.print_list ~sep:"" print_include ff (Util.SMap.bindings sem.ss_includes)
 
+let print_opens ff sem =
+	let print_include ff (n, (sem, op)) =
+		if op then
+			Format.fprintf ff "@,open %s" (String.capitalize_ascii n)
+	in
+	Util.print_list ~sep:"" print_include ff (Util.SMap.bindings sem.ss_includes)
+
 let print_applys ff apply_max =
 	let rec print_x1xn ff n =
 		if n = 1 then 
@@ -848,8 +855,9 @@ let print_makeinterpreter_functor apply_max sem ff =
 	Format.fprintf ff
 		"(** Module defining the specified values *)@,\
 		@[<v 2>module MakeInterpreter (F : UNSPEC)%a = struct@,\
-		include F@,let ( let* ) = M.bind%t%a%a@]@,end"
+		include F@,let ( let* ) = M.bind%a%t%a%a@]@,end"
 		print_args sem
+		print_opens sem
 		(fun ff -> ())
 		print_applys apply_max
 		print_value_definitions sem
