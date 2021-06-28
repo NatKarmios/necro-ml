@@ -93,6 +93,7 @@ let () =
 		end
 	in
 	let l = List.map get_basename d in
-	let result = wrap3 Generator.generate_interpreter l sem ski in
+	let ml_ast = wrap3 Generator.generate_interpreter l sem ski in
+	let result = Mlprinter.print_ast ml_ast in
 	Util.print_in_file result output_file
 

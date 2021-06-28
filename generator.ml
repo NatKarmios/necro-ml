@@ -1,5 +1,6 @@
 open Necro
 open Skeltypes
+open Mlast
 
 
 (* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
@@ -30,57 +31,22 @@ let necro_ocaml_keywords =
 	"NotImplemented"
 	]
 
-let print_comment ff c =
-	Format.fprintf ff "(**%s*)" c
+let convert_from from =
+	List.map String.capitalize_ascii from
 
-let print_from ff from =
-	Util.print_list ~sep:"" (fun ff x ->
-		Format.fprintf ff "%s." (String.capitalize_ascii x)) ff from
-
-(* print a type in the OCaml way (variable are begun with a single quote)
- * Tries to minimize the number of used parentheses *)
-let rec pp_print_type ff (s: necro_type) =
-	let rec aux protect ff s =
-		let pp_print_type_args ff args =
-			match args with
-			| [] -> ()
-			| [arg] -> Format.fprintf ff "%a " (aux true) arg
-			| _ -> Format.fprintf ff "(%a) "
-				(Util.print_list ~sep:", " (fun ff s -> aux false ff s)) args
-		in
-		begin match s with
-			| Alias (from, str, ta, _) ->
-					Format.fprintf ff "%a%a%s" pp_print_type_args ta print_from from str
-			| Variable s -> Format.fprintf ff "'%s" s
-			| Base (from, name, spec, args) ->
-					Format.fprintf ff "%a%a%s" pp_print_type_args args print_from from name
-			| Product l ->
-					begin match l with
-					| [] -> Format.fprintf ff "unit"
-					| _ when protect ->
-						Format.fprintf ff "(%a)"
-						(Util.print_list ~sep:" * " (fun ff s -> aux true ff s)) l
-					| _ ->
-						Format.fprintf ff "%a"
-						(Util.print_list ~sep:" * " (fun ff s -> aux true ff s)) l
-					end
-			| Arrow (s1, s2) when protect->
-					Format.fprintf ff "(%a -> %a M.t)" (aux true) s1 (aux true) s2
-			| Arrow (s1, s2) ->
-					Format.fprintf ff "(%a -> %a M.t)" (aux true) s1 (aux true) s2
-		end
-	in
-	aux false ff s
-
-(* FIXME: rename. [is_tuple_var] checks whether the pattern is a valid OCaml
-	pattern, or whether it would raise a warning *)
-let rec is_tuple_var p =
-	match p with
-	| PConstr _ -> false
-	| PTuple vl -> List.for_all is_tuple_var vl
-	| PVar _ -> true
-	| PWild _ -> true
-	| PRecord _ -> true
+(* Translate a type into its OCaml embedding *)
+let rec get_type (s: necro_type) =
+	begin match s with
+		| Alias (from, name, ta, _)
+		| Base (from, name, _, ta) ->
+				MLTyFrom (convert_from from, name, List.map get_type ta)
+		| Variable s -> MLTyVar s
+		| Product [] -> MLTyUnit
+		| Product [_] -> assert false
+		| Product l -> MLTyTuple (List.map get_type l)
+		| Arrow (s1, s2) -> MLTyArrow (get_type s1,
+				MLTyFrom (["M"], "t", [get_type s2]))
+	end
 
 let exhaustive_disjoint sem input_type input_values =
 	(* Check that the pattern [p1] is included in pattern [p2], that is, a value which
@@ -147,18 +113,6 @@ let is_exhaustive sem input_type input_values =
 	let (x, _) = exhaustive_disjoint sem input_type input_values in
 	x ()
 
-let print_loc =
-	begin function
-	| None -> ""
-	| Some ((start_pos, end_pos), file) ->
-			let open Lexing in
-			let start_col = start_pos.pos_cnum - start_pos.pos_bol + 1 in
-			let end_col = end_pos.pos_cnum - start_pos.pos_bol + 1 in
-			Printf.sprintf "File %s, line %d, characters %d-%d"
-			file start_pos.pos_lnum start_col end_col
-	end
-
-
 let rec get_from_ski from ski =
 	begin match from with
 	| [] -> ski
@@ -166,14 +120,17 @@ let rec get_from_ski from ski =
 			Util.SMap.find a ski.ski_includes |> fst |> get_from_ski q 
 	end
 
-let rec print_pattern sem ff p =
-	let print_record_field ff ((from, c, _), _, p) =
-		Format.fprintf ff "%a%s = %a" print_from from c (print_pattern sem) p
+(* get an mlpattern out of a skel pattern *)
+let rec get_pattern sem p =
+	let get_record_field ((from, c, _), _, p) =
+		(from, c, get_pattern sem p)
 	in
 	begin match p with
-	| PWild _ -> Format.fprintf ff "_"
-	| PVar (v, _) -> Format.fprintf ff "%s" v
+	| PWild _ -> MLPWild
+	| PVar (v, _) -> MLPVar v
 	| PConstr ((from, c, ty), _, PTuple []) ->
+			(* if input type for constructor ty is () then the () is ignored. But if
+				 it is polymorphic, then OCaml expects the () to be present *)
 			let f, ty =
 				begin match Skeleton.unalias ty with
 				| Base (f, ty, _, _) -> f, ty
@@ -185,26 +142,31 @@ let rec print_pattern sem ff p =
 			let cdef = List.find (fun cs -> cs.s_name = c) (Option.get cl) in
 			let input = cdef.s_input_type in
 			if input = Product [] then
-				Format.fprintf ff "%a%s" print_from from c
+				MLPConstr (from, c, None)
 			else
-				Format.fprintf ff "%a%s ()" print_from from c
-	| PConstr ((from, c, _), _, p) -> Format.fprintf ff "%a%s %a" print_from from
-		c (print_pattern sem) p
-	| PTuple pl -> Format.fprintf ff "(%a)"
-		(Util.print_list ~sep:", " (print_pattern sem)) pl
-	| PRecord pl -> Format.fprintf ff "{%a}"
-		(Util.print_list ~sep:"; " print_record_field) pl
+				MLPConstr (from, c, Some MLPTop)
+	| PConstr ((from, c, _), _, p) ->
+			MLPConstr (from, c, Some (get_pattern sem p))
+	| PTuple [] ->
+			MLPTop
+	| PTuple pl ->
+			MLPTuple (List.map (get_pattern sem) pl)
+	| PRecord pl ->
+			MLPRecord (List.map get_record_field pl)
 	end
 
-let rec print_value sem ff =
-	let print_record_field ff ((from, c, _), _, t) =
-		Format.fprintf ff "%a%s = %a" print_from from c (print_value sem) t
+let rec get_value_of_value sem =
+	let get_record_field ((from, c, _), _, t) =
+		(from, c, get_value_of_value sem t)
 	in
 	begin function
-	| TVar (TVLet (n, _)) -> Format.fprintf ff "%s" n
+	| TVar (TVLet (n, _)) ->
+			MLTVar ([], n)
 	| TVar (TVValue (_, f, n, _, _)) ->
-			Format.fprintf ff "%a%s" print_from f n
+			MLTVar (f, n)
 	| TConstr ((from, c, ty), _, TTuple []) ->
+			(* if input type for constructor ty is () then the () is ignored. But if
+				 it is polymorphic, then OCaml expects the () to be present *)
 			let f, ty =
 				begin match Skeleton.unalias ty with
 				| Base (f, ty, _, _) -> f, ty
@@ -216,154 +178,140 @@ let rec print_value sem ff =
 			let cdef = List.find (fun cs -> cs.s_name = c) (Option.get cl) in
 			let input = cdef.s_input_type in
 			if input = Product [] then
-				Format.fprintf ff "%a%s" print_from from c
+				MLTConstr (from, c, None)
 			else
-				Format.fprintf ff "%a%s ()" print_from from c
+				MLTConstr (from, c, Some MLTTop)
 	| TConstr ((from, c, _), _, t) ->
-			Format.fprintf ff "%a%s %a" print_from from c (print_value_protect sem) t
+			MLTConstr (from, c, Some (get_value_of_value sem t))
+	| TTuple [] -> MLTTop
 	| TTuple tl ->
-			Format.fprintf ff "(%a)" (Util.print_list ~sep:", " (print_value sem)) tl
+			MLTTuple (List.map (get_value_of_value sem) tl)
 	| TFunc (x, _, s) ->
-			Format.fprintf ff "begin function %s ->@,@[<v 2>  %a@]@,end" x
-			(print_skel sem) s
+			MLTFunc (MLPVar x, get_value_of_skel sem s)
 	| TField (t, ta, (from, f, _)) ->
 			begin match int_of_string_opt f with
-			| None -> Format.fprintf ff "%a.%a%s" (print_value sem) t print_from from f
+			| None ->
+					MLTField (get_value_of_value sem t, from, f)
 			| Some 1 when List.length ta = 2 ->
-					Format.fprintf ff "fst %a" (print_value_protect sem) t
+					MLTApp (MLTVar ([], "fst"), [get_value_of_value sem t])
 			| Some 2 when List.length ta = 2 ->
-					Format.fprintf ff "snd %a" (print_value_protect sem) t
+					MLTApp (MLTVar ([], "snd"), [get_value_of_value sem t])
 			| Some i ->
-					let l =
-						List.init (i-1) (fun _ -> "_") @
-						"x" :: List.init (List.length ta - i) (fun _ -> "_")
+					let l = List.init (List.length ta) (fun j ->
+						if j = i - 1 then MLPVar "j" else MLPWild)
 					in
-					let pattern = String.concat ", " l in
-					Format.fprintf ff "let (%s) = %a in x" pattern (print_value sem) t
+					let pattern = MLPTuple l in
+					MLTLetIn (pattern, get_value_of_value sem t, MLTVar ([], "x"))
 			end
-	| TRecord (None, tl) ->
-			Format.fprintf ff "{%a}" (Util.print_list ~sep:"; " print_record_field) tl
-	| TRecord (Some t, tl) ->
-			Format.fprintf ff "{%a with %a}"
-			(print_value sem) t (Util.print_list ~sep:"; " print_record_field) tl
+	| TRecord (t, tl) ->
+			MLTRecord (
+				Option.map (get_value_of_value sem) t,
+				List.map get_record_field tl
+			)
 	end
 
-and print_value_protect sem ff t =
-	begin match t with
-	| TVar _ | TTuple _ | TConstr (_, _, TTuple []) ->
-			print_value sem ff t
-	| _ -> Format.fprintf ff "(%a)" (print_value sem) t
-	end
-
-and print_bind_skel sem ff s =
+and get_value_of_skel sem s =
 	begin match s with
-	| LetIn _ | Return (TFunc _)
-	| Apply (_, _ :: _ :: _) | Branching _ ->
-			Format.fprintf ff "@,%a@]@," (print_skel sem) s
-	| _ -> Format.fprintf ff " %a@] " (print_skel sem) s
-	end
-and print_bind_value sem ff s =
-	begin match s with
-	| TFunc _ -> assert false
-	| _ -> Format.fprintf ff " %a@] " (print_value sem) s
-	end
-and print_ret_skel sem ff s =
-	begin match s with
-	| LetIn _ | Return (TFunc _)
-	| Apply (_, _ :: _ :: _) | Branching _ ->
-			Format.fprintf ff "@,%a" (print_skel sem) s
-	| _ -> Format.fprintf ff " %a" (print_skel sem) s
-	end
-and print_skel sem ff s =
-	begin match s with
-	| Return t ->
-			Format.fprintf ff "M.ret %a" (print_value_protect sem) t
-	| Apply (t, []) ->
-			Format.fprintf ff "M.ret %a" (print_value_protect sem) t
+	| Return t | Apply (t, []) ->
+			MLTApp (MLTVar (["M"], "ret"), [get_value_of_value sem t])
 	| Apply (f, q) ->
 			let kind =
 				begin match f with
 				| TVar (TVValue (Unspec, f, n, _, _)) ->
-						Format.asprintf "(M.Unspec \"%a%s\")" print_from f n
+						MLTConstr (["M"], "Unspec", Some (MLTString n))
 				| TVar (TVValue (Spec, f, n, _, _)) ->
-						Format.asprintf "(M.Spec \"%a%s\")" print_from f n
-				| _ -> "M.Anon"
+						MLTConstr (["M"], "Spec", Some (MLTString n))
+				| _ -> MLTConstr (["M"], "Anon", None)
 				end
 			in
-			Format.fprintf ff "apply%d %s %a %a" (List.length q) kind
-			(print_value_protect sem) f
-			(Util.print_list ~sep:" " (print_value_protect sem)) q
+			MLTApp (
+				MLTVar ([], Format.sprintf "apply%d" (List.length q)),
+				kind ::
+				get_value_of_value sem f ::
+				List.map (get_value_of_value sem) q
+			)
 	| LetIn (None, p, s1, s2) ->
-		if is_tuple_var p then
-			Format.fprintf ff "@[<v 2>let* %a =%ain@,%a"
-			(print_pattern sem) p (print_bind_skel sem) s1
-			(print_skel sem) s2
-		else if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
-			begin match s1 with
-			| Return t ->
-				Format.fprintf ff
-				"@[<v>@[<v 2>begin match%awith@,\
-					| @[<v>%a ->\
-						%a@]@,\
-				end@]"
-				(print_bind_value sem) t (print_pattern sem) p (print_ret_skel sem) s2
-			| _ ->
-				Format.fprintf ff
-				"@[<v 2>let* %s =%ain@,@[<v>begin match %s with@,\
-					| @[<v>%a ->\
-						%a@]@,\
-				end@]"
-				!tmp (print_bind_skel sem) s1 !tmp (print_pattern sem) p (print_ret_skel sem) s2
-			end
+		if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
+			MLTLetStarIn (
+				get_pattern sem p,
+				get_value_of_skel sem s1,
+				get_value_of_skel sem s2
+			)
 		else
-			(* FIXME *)
 			begin match s1 with
-			| Return t ->
-			Format.fprintf ff
-			"@[<v>@[<v 2>begin match %a with@,\
-				| @[<v>%a ->%a@]@,\
-				| _ -> M.fail \"\"@,\
-				end@]"
-			(print_bind_value sem) t (print_pattern sem) p (print_ret_skel sem) s2
+			| Return v1 ->
+					MLTMatchWith (
+						get_value_of_value sem v1,
+						[
+							(get_pattern sem p, get_value_of_skel sem s2) ;
+							(MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTString ""]))
+						]
+					)
 			| _ ->
-			Format.fprintf ff
-			"@[<v 2>let* %s =%ain@,\
-				@[<v>begin match %s with@,\
-				| @[<v>%a ->%a@]@,\
-				| _ -> M.fail \"\"@,\
-				end@]"
-			!tmp (print_bind_skel sem) s1 !tmp (print_pattern sem) p (print_ret_skel sem) s2
+					MLTLetStarIn (
+						MLPVar !tmp,
+						get_value_of_skel sem s1,
+						MLTMatchWith (
+							MLTVar ([], !tmp),
+							[
+								(get_pattern sem p, get_value_of_skel sem s2) ;
+								(MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTString ""]))
+							]
+						)
+					)
 			end
 	| LetIn (Some (k, from, m, ta, _), p, s1, s2)
 		when is_exhaustive sem (Skeleton.pattern_typ p) [p] ->
 			let kind =
-				Format.asprintf "(%s \"%a%s\")"
-				(if k = Unspec then "Unspec" else "Spec")
-				print_from from
-				m
+				begin match k with
+				| Spec -> MLTConstr (["M"], "Spec", Some (MLTString m))
+				| Unspec -> MLTConstr (["M"], "Unspec", Some (MLTString m))
+				end
 			in
-			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %s %a%s %s (function %a ->@,%a)"
-			!tmp (print_bind_skel sem) s1 kind print_from from m !tmp
-			(print_pattern sem) p (print_skel sem) s2
+			MLTLetStarIn (
+				MLPVar !tmp,
+				get_value_of_skel sem s1,
+				MLTApp (
+					MLTVar ([], "apply2"),
+					kind ::
+					MLTVar (from, m) ::
+					MLTVar ([], !tmp) ::
+					MLTFunc (get_pattern sem p, get_value_of_skel sem s2) :: []
+				)
+			)
 	| LetIn (Some (k, from, m, ta, _), p, s1, s2) ->
 			let kind =
-				Format.asprintf "(%s \"%a%s\")"
-				(if k = Unspec then "Unspec" else "Spec")
-				print_from from
-				m
+				begin match k with
+				| Spec -> MLTConstr (["M"], "Spec", Some (MLTString m))
+				| Unspec -> MLTConstr (["M"], "Unspec", Some (MLTString m))
+				end
 			in
-			Format.fprintf ff "@[<v 2>let* %s = %ain@,apply2 %s %a%s %s (function _tmp ->@, %a)"
-			!tmp (print_bind_skel sem) s1 kind print_from from m !tmp (print_skel sem)
-			(LetIn (None, p, Return (TVar (TVLet ("_tmp",Product[]))), s2))
+			MLTLetStarIn (
+				MLPVar !tmp,
+				get_value_of_skel sem s1,
+				MLTApp (
+					MLTVar ([], "apply2"),
+					kind ::
+					MLTVar (from, m) ::
+					MLTVar ([], !tmp) ::
+					MLTFunc (
+						MLPVar !tmp,
+						get_value_of_skel sem
+							(LetIn (None, p, Return (TVar (TVLet (!tmp, Product []))), s2))
+					) :: []
+				)
+			)
+
 	| Branching (_, outs) ->
 				begin match branch_to_match sem outs with
-				| Some txt -> Format.fprintf ff "%t" txt
+				| Some res -> res
 				| None ->
-						Format.fprintf ff "@[<v 2>begin@,@[<v 2>M.branch [@,%a ]@]@]@,end"
-							(Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff " ;@,")
-							(fun ff ->
-								Format.fprintf ff "@[<v 2>(fun () ->@,%t)@]"
-							)) (List.map (fun s ff -> Format.fprintf ff "%a" (print_skel sem) s) outs)
+						let branches =
+							List.map (fun sk ->
+								MLTFunc (MLPTop, get_value_of_skel sem sk)
+							) outs
+						in
+						MLTApp (MLTVar (["M"], "branch"), [MLTList branches])
 				end
 	| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
 	end
@@ -379,54 +327,38 @@ and branch_to_match sem outs =
 		end
 	in
 	begin match outs with
-	| [] -> Some (fun ff -> Format.fprintf ff "M.fail \"\"")
+	| [] -> Some (MLTVar (["M"], "fail"))
 	| LetIn (a, p, s1, s2) :: q when a = None ->
 			begin match aux a s1 q with
 			| None -> None
 			| Some l ->
 					let patterns = (p, s2) :: l in
-					(* si les motifs sont deux à deux disjoints, on fait un match. Si le
-					 * total des motifs ne couvre pas le type du motif, on ajoute un
-					 * [M.fail ""]
-					 * sinon, on renvoie None *)
+					(* if patterns are disjoint, we can use a [match with]. If the pattern
+					   matching is not exhaustive, we add a catch-all
+						 Otherwise, we return [None] to signal we can't do it *)
 					let (exhaustive, disjoint) =
 						exhaustive_disjoint sem (Skeleton.pattern_typ p) (List.map fst patterns)
 					in
-					begin match disjoint (), exhaustive (), s1 with
-					| true, true, Return t ->
-						Some (fun ff ->
-							Format.fprintf ff "@[<v 0>@[<v 2>begin match%awith@,%a@,end@]"
-							(print_bind_value sem) t
-							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
-							(print_ret_skel sem) skel)) patterns)
-					| true, true, _ ->
-						Some (fun ff ->
-							Format.fprintf ff "@[<v 0>@[<v 2>let* %s =%ain@,\
-							begin match %s with@,%a@,end@]"
-							!tmp (print_bind_skel sem) s1 !tmp
-							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
-							(print_ret_skel sem) skel)) patterns)
-					| true, false, Return t ->
-						Some (fun ff ->
-							Format.fprintf ff "@[<v 2>begin match %a with@,\
-							%a@,| _ -> M.fail \"\"@,end"
-							(print_bind_value sem) t
-							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
-							(print_ret_skel sem) skel)) patterns
+					if not (disjoint ()) then None else
+					let get_branch (x,y) = 
+						(get_pattern sem x, get_value_of_skel sem y)
+					in
+					let ok_branches = List.map get_branch patterns in
+					let fail_branch =
+						(MLPWild, MLTApp (MLTVar (["M"], "fail"),[MLTString ""]))
+					in
+					let branches =
+						if exhaustive () then ok_branches else ok_branches @ [fail_branch]
+					in
+					Some begin match s1 with
+					| Return v1 ->
+							MLTMatchWith (get_value_of_value sem v1, branches)
+					| _ ->
+							MLTLetStarIn (
+								MLPVar !tmp,
+								get_value_of_skel sem s1,
+								MLTMatchWith (MLTVar ([], !tmp), branches)
 							)
-					| true, false, _ ->
-						Some (fun ff ->
-							Format.fprintf ff "@[<v 2>let* %s =%ain@,\
-							begin match %s with@,%a@,| _ -> M.fail \"\"@,end"
-							!tmp (print_bind_skel sem) s1 !tmp
-							(Format.pp_print_list (fun ff (pat, skel) ->
-								Format.fprintf ff "@[<v 4>| %a ->%a@]" (print_pattern sem) pat
-							(print_ret_skel sem) skel)) patterns
-							)
-					| _ -> None
 					end
 			end
 	| _ -> None
@@ -435,18 +367,14 @@ and branch_to_match sem outs =
 
 
 
-(* Print signature only when necessary (if the value is polymorphic) *)
-let print_poly_sig ta (ty: necro_type) ff =
-	let ta_print ff ty_print =
-		if ta <> [] then
-				Format.fprintf ff ": %a. %t" (Util.print_list ~sep:" "
-				(fun ff -> Format.fprintf ff "'%s")) ta ty_print
-	in
-	Format.fprintf ff "%a" ta_print (fun ff -> pp_print_type ff ty)
+(* Returns signature if it's polymorphic, None otherwise *)
+let get_poly_sig ta (ty: necro_type) =
+	if ta = [] then None else
+	Some (MLTyPoly (ta, get_type ty))
 
 
 (* Write the mutually-recursive values *)
-let print_value_definitions ff sem =
+let get_value_definitions sem =
 	let spec_values =
 		sem.ss_values
 		|> Util.SMap.bindings
@@ -457,112 +385,76 @@ let print_value_definitions ff sem =
 			| _ -> None
 			end)
 	in
-	let print_comm ff c =
-		begin match c with
-		| None -> ()
-		| Some c -> Format.fprintf ff "%a@," print_comment c
-		end
+	let get_value_decl (name, ta, ty, t, c) =
+		(name, c, [], get_poly_sig ta ty, get_value_of_value sem t)
 	in
-	let print_value_def ff (name, ta, ty, t, _) =
-		Format.fprintf ff "%s%t =@, %a" name
-		(print_poly_sig ta ty) (print_value sem) t
-	in
-	let print_first ff t =
-		let (_, _, _, _, c) = t in
-		Format.fprintf ff "%a@[<v 2>let rec %a" print_comm c print_value_def t
-	in
-	let print_not_first ff t =
-		let (_, _, _, _, c) = t in
-		Format.fprintf ff "@]\n@,%a@[<v 2>and %a" print_comm c print_value_def t
-	in
-	if spec_values <> [] then
-		Format.fprintf ff "\n@,%a%a@]"
-		print_first (List.hd spec_values)
-		(Util.print_list ~sep:"" print_not_first) (List.tl spec_values)
+	MValDefs (List.map get_value_decl spec_values)
 
-(* Prints [type t] for all unspecified types *)
-let (print_type_decls, print_type_decls_ski) =
+
+(* returns [type t] for all unspecified types *)
+let (unspec_type_decl, unspec_type_decls_ski) =
 	(* prints the type's name with "type " before it *)
-	let print_one_type_declaration ff s =
+	let type_with_comment (c, s) =
 		begin match s with
 		| Product _ | Variable _ | Alias _ | Arrow _ ->
 				assert false
-		| Base (_, s, _, []) ->
-				Format.fprintf ff "@,type %s" s
-		| Base (_, s, _, _ :: []) ->
-				Format.fprintf ff "@,type _ %s" s
 		| Base (_, s, _, args) ->
-				let print_one ff _ = Format.fprintf ff "_" in
-				Format.fprintf ff "@,type (%a) %s"
-				(Util.print_list ~sep:", " print_one) args s
+				MTTypeDecl (c, List.map (fun _ -> "_") args, s)
 		end
 	in
-	let print_type_with_comment ff (c, s) =
-		begin match c with
-		| None -> print_one_type_declaration ff s
-		| Some c ->
-				Format.fprintf ff "@,%a%a" print_comment c print_one_type_declaration s
-		end
-	in
-	(begin fun ff sem ->
+	(begin fun sem ->
 		let ts =
 			sem.ss_types
 			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
 			|> Util.SMap.bindings
 			|> List.map (fun (x, (c, ty, _)) -> (c, ty))
 		in
-		Util.print_list print_type_with_comment ff ts end,
-		begin fun ff ski ->
+		List.map type_with_comment ts end,
+	begin fun ski ->
 		let ts =
 			ski.ski_types
 			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
 			|> Util.SMap.bindings
 			|> List.map (fun (x, (c, ty, _)) -> (c, ty))
 		in
-		Util.print_list print_type_with_comment ff ts end
+		List.map type_with_comment ts end
 	)
 
 
 (* Prints [val t: ty] for all unspecified values *)
-let print_value_signatures ~all ff sem =
-	let print_comment ff c =
-			begin match c with
-			| None -> ()
-			| Some c ->
-					Format.fprintf ff "%a@," print_comment c
-			end
-	in
+let get_value_signatures ~all sem =
 	(* Prints the signature of a value *)
-	let print_value_sig ff c name ty =
-		Format.fprintf ff "%aval %s: %a" print_comment c name pp_print_type ty
+	let get_value_sig (name, (c, _, ty, _)) =
+		MTValDecl (c, name, get_type ty)
 	in
 	let all_sigs =
 		sem.ss_values
 		|> (if all then Util.id else Util.SMap.filter (fun a (_, _, _, t) -> t = None))
 		|> Util.SMap.bindings
 	in
-	if all_sigs <> [] then
-			Format.fprintf ff "\n@,%a"
-			(Format.pp_print_list (fun ff (name, (c, _, ty,_)) ->
-				print_value_sig ff c name ty)) all_sigs
+	List.map get_value_sig all_sigs
 
-let print_value_signatures_ski ff ski =
+let get_value_signatures_ski ski =
 	(* Prints the signature of a value *)
-	let print_value_sig ff c name ty =
-		Format.fprintf ff "val %s: %a" name pp_print_type ty
+	let get_value_sig (name, (_, c, _, ty)) =
+		MTValDecl (c, name, get_type ty)
 	in
 	let all_sigs =
 		ski.ski_values
 		|> Util.SMap.bindings
 	in
-	if all_sigs <> [] then
-			Format.fprintf ff "\n@,%a"
-			(Format.pp_print_list (fun ff (name, (_, c, _, ty)) ->
-				print_value_sig ff c name ty)) all_sigs
+	List.map get_value_sig all_sigs
 
-let print_values_not_implemented ff sem =
-	let print_value_not_implemented ff (name, _) =
-		Format.fprintf ff "let %s _ = raise (NotImplemented \"%s\")" name name
+let get_values_not_implemented sem =
+	let get_value_not_implemented (name, _) =
+		let error =
+			(* raise NotImplemented "%name" *)
+			MLTApp (
+				MLTVar ([], "raise"),
+				[ MLTConstr ([], "NotImplemented", Some (MLTString name)) ]
+			)
+		in
+		MValDefs [(name, None, ["_"], None, error)]
 	in
 	let vals =
 		sem.ss_values
@@ -572,61 +464,27 @@ let print_values_not_implemented ff sem =
 				end)
 		|> Util.SMap.bindings
 	in
-	if vals <> [] then
-	Format.fprintf ff "\n@,%a"
-		(Format.pp_print_list print_value_not_implemented) vals
+	List.map get_value_not_implemented vals
 
 (** Prints the specified types. If comm is set to true, then also print the
-    special comments *)
-let (print_specified_types, print_spec_types_ski) =
-	let print_constructor ff c =
-		let print ff t =
-			begin match t with
-			| Product (_::_) -> Format.fprintf ff "(%a)" pp_print_type t
-			| _ -> pp_print_type ff t
-			end
-		in
-		let print_com ff =
-			begin function
-			| None -> ()
-			| Some c -> Format.fprintf ff " %a" print_comment c
-			end
-		in
+r   special comments *)
+let (specified_types, spec_types_ski):
+	(comm:bool -> 'a -> type_def list) * ('b -> type_def list) =
+	let constructor c =
 		begin match c.s_input_type with
-		| Product [] ->
-				Format.fprintf ff "| %s%a"
-				c.s_name print_com c.s_comment
-		| ty ->
-				Format.fprintf ff "| %s of %a%a"
-				c.s_name print ty print_com c.s_comment
+		| Product [] -> (c.s_name, None, c.s_comment)
+		| ty -> (c.s_name, Some (get_type ty), c.s_comment)
 		end
 	in
-	let print_field ff c =
-		let print = pp_print_type in
-		let print_com ff =
-			begin function
-			| None -> ()
-			| Some c -> Format.fprintf ff " %a" print_comment c
-			end
-		in
-		begin match c.s_output_type with
-		| ty ->
-				Format.fprintf ff "  %s: %a%a"
-				c.s_name print ty print_com c.s_comment
-		end
+	let field c = (c.s_name, get_type c.s_output_type, c.s_comment) in
+	let extract =
+		List.map (begin function | Variable v -> v | _ -> assert false end)
 	in
-	(begin fun ~comm ff ss ->
-	let print_comment ff c =
-		if not comm then () else
-			begin match c with
-			| None -> ()
-			| Some c ->
-					Format.fprintf ff "@,%a" print_comment c
-			end
-	in
+	(begin fun ~comm ss ->
 	let const = Skeleton.get_constructors_by_type ss in
 	let fields = Skeleton.get_fields_by_type ss in
 	let get_comm base_type =
+		if not comm then None else
 		let name =
 			begin match base_type with
 			| Base (_, name, _, _) -> name
@@ -638,32 +496,24 @@ let (print_specified_types, print_spec_types_ski) =
 		| None -> failwith "Internal error 1"
 		end
 	in
-	if const <> [] then
-		Format.fprintf ff "%a%a"
-			(fun ff (ty, c) -> Format.fprintf ff "\n@,%atype %a =@,%a"
-				print_comment (get_comm ty) pp_print_type ty
-				(Format.pp_print_list print_constructor) c)
-			(List.hd const)
-				(Util.print_list ~sep:"" (fun ff (ty, c) ->
-					Format.fprintf ff "%a@,and %a =@,%a"
-					print_comment (get_comm ty) pp_print_type ty
-					(Format.pp_print_list print_constructor) c)) (List.tl const);
-	if fields <> [] then
-		Format.fprintf ff "%a%a"
-			(fun ff (ty, f) -> Format.fprintf ff "%s@,%a%s %a = {@,%a@,}"
-				(if const = [] then "\n" else "")
-				print_comment (get_comm ty)
-				(if const = [] then "type" else "and")
-				pp_print_type ty
-				(Format.pp_print_list ~pp_sep:(fun ff _ ->
-					Format.fprintf ff ";@,") print_field) f)
-			(List.hd fields)
-				(Util.print_list ~sep:"" (fun ff (ty, f) ->
-					Format.fprintf ff "@,and %a = {@,%a@,}"
-					pp_print_type ty
-					(Format.pp_print_list ~pp_sep:(fun ff _ ->
-					Format.fprintf ff ";@,") print_field) f)) (List.tl fields) end,
-		begin fun ff ski ->
+	let variant_type_decls =
+		List.map (fun (ty, c) ->
+			begin match ty with
+			| Base ([], name, Variant, args) ->
+					TDVariant (get_comm ty, extract args, name, List.map constructor c)
+			| _ -> assert false
+			end) const
+	in
+	let record_type_decls =
+		List.map (fun (ty, f) ->
+			begin match ty with
+			| Base ([], name, Record, args) ->
+					TDRecord (get_comm ty, extract args, name, List.map field f)
+			| _ -> assert false
+			end) fields
+	in
+	 (variant_type_decls @ record_type_decls) end,
+	begin fun ski ->
 	let get_constructors_and_fields_by_type ski =
 		Util.SMap.fold (fun _ (_, s,c) (lc, lf) ->
 			begin match s, c with
@@ -673,235 +523,217 @@ let (print_specified_types, print_spec_types_ski) =
 			end) ski.ski_types ([], [])
 	in
 	let const, fields = get_constructors_and_fields_by_type ski in
-	if const <> [] then
-		Format.fprintf ff "%a%a"
-			(fun ff (ty, c) -> Format.fprintf ff "\n@,type %a =@,%a"
-				pp_print_type ty
-				(Format.pp_print_list print_constructor) c)
-			(List.hd const)
-				(Util.print_list ~sep:"" (fun ff (ty, c) ->
-					Format.fprintf ff "@,and %a =@,%a"
-					pp_print_type ty
-					(Format.pp_print_list print_constructor) c)) (List.tl const) ;
-	if fields <> [] then
-		Format.fprintf ff "%a%a"
-			(fun ff (ty, f) -> Format.fprintf ff "%t %a = {@,%a@,}"
-			(fun ff -> Format.fprintf ff (if const = [] then "\n@,type" else "@,and"))
-				pp_print_type ty
-				(Format.pp_print_list ~pp_sep:(fun ff _ ->
-					Format.fprintf ff ";@,") print_field) f)
-			(List.hd fields)
-				(Util.print_list ~sep:"" (fun ff (ty, f) ->
-					Format.fprintf ff "@,and %a = {@,%a@,}"
-					pp_print_type ty
-					(Format.pp_print_list ~pp_sep:(fun ff _ ->
-					Format.fprintf ff ";@,") print_field) f)) (List.tl fields)
-		end)
-
-	(*
-	 *if const <> [] then
-	 *Format.fprintf ff "\n@,type %a"
-	 *  (Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff "@,and ") (fun
-	 *    ff (base_type, const) ->
-	 *      Format.fprintf ff "%a =@,%a" pp_print_type base_type
-	 *          (Format.pp_print_list print_constructor) const
-	 *    )) const
-	 *)
-
-let print_aliases ff ss =
-	let empty = Util.SMap.is_empty ss.ss_types in
-	let print_comment ff c =
-			begin match c with
-			| None -> ()
-			| Some c ->
-					Format.fprintf ff "%a@," print_comment c
+	let get_comm base_type =
+		let name =
+			begin match base_type with
+			| Base (_, name, _, _) -> name
+			| _ -> assert false
 			end
+		in
+		begin match Util.SMap.find_opt name ski.ski_types with
+		| Some (c, _, _) -> c
+		| None -> failwith "Internal error 1"
+		end
 	in
-	begin match empty with
-	| true ->
-		Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff "@,") (fun
-			ff (name, (c, ta, ty)) ->
-				let ta' = List.map (fun a -> Variable a) ta in
-				Format.fprintf ff "%atype %a = %a"
-				print_comment c
-				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
-			) ff (Util.SMap.bindings ss.ss_aliases)
-	| false ->
-		Format.pp_print_list ~pp_sep:(fun ff () -> ()) (fun
-			ff (name, (c, ta, ty)) ->
-				let ta' = List.map (fun a -> Variable a) ta in
-				Format.fprintf ff "@,%aand %a = %a"
-				print_comment c
-				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
-			) ff (Util.SMap.bindings ss.ss_aliases)
-	end
-
-let print_aliases_ski ff ski =
-	let empty = Util.SMap.is_empty ski.ski_types in
-	let print_comment ff c =
-			begin match c with
-			| None -> ()
-			| Some c ->
-					Format.fprintf ff "%a@," print_comment c
-			end
+	let variant_type_decls =
+		List.map (fun (ty, c) ->
+			begin match ty with
+			| Base ([], name, Variant, args) ->
+					TDVariant (get_comm ty, extract args, name, List.map constructor c)
+			| _ -> assert false
+			end) const
 	in
-	begin match empty with
-	| true ->
-		Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff "@,") (fun
-			ff (name, (c, ta, ty)) ->
-				let ta' = List.map (fun a -> Variable a) ta in
-				Format.fprintf ff "%atype %a = %a"
-				print_comment c
-				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
-			) ff (Util.SMap.bindings ski.ski_aliases)
-	| false ->
-		Format.pp_print_list ~pp_sep:(fun ff () -> ()) (fun
-			ff (name, (c, ta, ty)) ->
-				let ta' = List.map (fun a -> Variable a) ta in
-				Format.fprintf ff "@,%aand %a = %a"
-				print_comment c
-				pp_print_type (Base ([], name, Unspec, ta')) pp_print_type ty
-			) ff (Util.SMap.bindings ski.ski_aliases)
-	end
+	let record_type_decls =
+		List.map (fun (ty, f) ->
+			begin match ty with
+			| Base ([], name, Record, args) ->
+					TDRecord (get_comm ty, extract args, name, List.map field f)
+			| _ -> assert false
+			end) fields
+	in
+	(variant_type_decls @ record_type_decls) end)
 
+let get_aliases ss: type_def list =
+	let get_alias (name, (c, ta, ty)) =
+		TDAlias (c, ta, name, get_type ty)
+	in
+	List.map get_alias (Util.SMap.bindings ss.ss_aliases)
 
-(* Function to print "with module _ := _" *)
-let print_with ff l =
-	let print_one_with ff a =
+let get_aliases_ski ski =
+	let get_alias (name, (c, ta, ty)) =
+		TDAlias (c, ta, name, get_type ty)
+	in
+	List.map get_alias (Util.SMap.bindings ski.ski_aliases)
+
+(* Function to extract "with module _ = _" *)
+let with_modules l =
+	let one_with a =
 		let a_cap = String.capitalize_ascii a in
-		Format.fprintf ff " with module %s = %s" a_cap a_cap
+		(a_cap, [a_cap])
 	in
-	Util.print_list print_one_with ff l
+	List.map one_with l
 
-let print_includes_unspec print_one ff ss =
-	let l = !all_includes in
-	Util.print_list ~sep:"" print_one ff l
-
-let print_includes print_one ff ss =
-	let includes = Util.SMap.find "this" !dep_map in
-	Util.print_list ~sep:"" print_one ff includes
+(* Function to print "with module _ = _" *)
+let get_with l =
+	let get_one_with a =
+		let a_cap = String.capitalize_ascii a in
+		(a_cap, a_cap)
+	in
+	List.map get_one_with l
 
 (* writes the UNSPEC module type *)
-let print_unspec_module_type sem ff =
-	let print_one ff i =
+let unspec_module_type sem =
+	let one_include i =
 		let l = Util.SMap.find i !dep_map in
 		let i' = String.capitalize_ascii i in
-		Format.fprintf ff "@,module %s:%s.INTERPRETER with module M = M%a"
-		i' i' print_with l
+		let withes = (with_modules l) in
+		MTModule (i', [i'; "INTERPRETER"], withes)
 	in
-	Format.fprintf ff "(** All types, and the unspecified values *)@,\
-		@[<v 2>module type UNSPEC = sig@,%s%a@,%s%a%a%a@]@,end"
-		"module M: MONAD"
-		(print_includes_unspec print_one) sem
-		"include TYPES"
-		(print_specified_types ~comm:true) sem
-		print_aliases sem
-		(print_value_signatures ~all:false) sem
+	let com = " All types, and the unspecified values " in
+	let def =
+		MTModule ("M", ["MONAD"], []) ::
+		List.map one_include !all_includes @
+		MTInclude "TYPES" ::
+		MTTypeDefs (specified_types ~comm:true sem @ get_aliases sem) ::
+		get_value_signatures ~all:false sem
+	in
+	ModuleType (Some com, "UNSPEC", def)
 
 (* writes the TYPES module type *)
-let print_types_module_type sem ff =
-	Format.fprintf ff "(** The unspecified types *)@,\
-		@[<v 2>module type TYPES = sig%a@]@,end"
-		print_type_decls sem
+let types_module_type sem =
+	let comment = " The unspecified types " in
+	ModuleType (Some comment, "TYPES", unspec_type_decl sem) (* TODO *)
 
-let print_monad_module_type sem ff =
-	Format.fprintf ff
-{|(** The interpretation monad *)
-module type MONAD = sig
-  type 'a t
-  val ret: 'a -> 'a t
-  val bind: 'a t -> ('a -> 'b t) -> 'b t
-  val branch: (unit -> 'a t) list -> 'a t
-  val fail: string -> 'a t
-  type kind = | Anon | Spec of string | Unspec of string
-  val apply: kind -> ('a -> 'b t) -> 'a -> 'b t
-  val extract: 'a t -> 'a
-end|}
-
-let print_args ff sem =
-	let print_include ff (n, sem) =
-		Format.fprintf ff "@,(%s:%s.INTERPRETER with module M = F.M)"
-		(String.capitalize_ascii n) (String.capitalize_ascii n)
+let monad_module_type sem =
+	let com = " The interpretation monad " in
+	let def =
+		let t a = MLTyBase ("t", [MLTyVar a]) in
+		[ MTTypeDecl (None, ["a"], "t")
+		; MTValDecl ( None,"ret", MLTyArrow (MLTyVar "a", t "a"))
+		; MTValDecl ( None,"bind",
+			MLTyArrow (t "a", MLTyArrow (MLTyArrow (MLTyVar "a", t "b"), t "b")))
+		; MTValDecl (None, "branch",
+			MLTyArrow (MLTyList (MLTyArrow (MLTyUnit, t "a")), t "a"))
+		; MTValDecl (None, "fail", MLTyArrow (MLTyString, t "a"))
+		; MTTypeDefs [ TDVariant (None, [], "kind",
+				[ ("Anon", None, None)
+				; ("Spec", Some MLTyString, None)
+				; ("Unspec", Some MLTyString, None)
+				]
+			)]
+		; MTValDecl (None, "apply",
+			let a_bt = MLTyArrow (MLTyVar "a", t "b") in
+			MLTyArrow (MLTyBase ("kind", []), MLTyArrow (a_bt, a_bt)))
+		; MTValDecl (None, "extract", MLTyArrow (t "a", MLTyVar "a"))
+		]
 	in
-	Util.print_list ~sep:"" print_include ff (Util.SMap.bindings sem.ss_includes)
+	ModuleType (Some com, "MONAD", def)
 
-let print_opens ff sem =
-	let print_include ff (n, (sem, op)) =
-		if op then
-			Format.fprintf ff "@,open %s" (String.capitalize_ascii n)
+let get_module_args sem: modargs =
+	let print_include (n, sem) =
+		let name = String.capitalize_ascii n in
+		(name, [name; "INTERPRETER"], [("M",["F";"M"])])
 	in
-	Util.print_list ~sep:"" print_include ff (Util.SMap.bindings sem.ss_includes)
+	List.map print_include (Util.SMap.bindings sem.ss_includes)
 
-let print_applys ff apply_max =
-	let rec print_x1xn ff n =
-		if n = 1 then 
-			Format.fprintf ff "x1"
-		else
-		Format.fprintf ff "%a x%d" print_x1xn (n-1) n
+let get_opens sem: module_tld list =
+	let print_include (n, (_, op)) =
+		if op then Some (MOpen [String.capitalize_ascii n]) else None
 	in
-	if apply_max <> 0 then
-	Format.fprintf ff "\n@,%s%a"
-	"let apply1 k f x = M.apply k f x"
-	(Util.print_list (fun ff i ->
-		Format.fprintf ff
-		"@,@[<v 2>let apply%d k f x0 %a =@,\
-		let* _tmp = apply1 k f x0 in@,\
-		apply%d M.Anon _tmp %a@]"
-		i print_x1xn (i-1) (i-1) print_x1xn (i-1)))
-	(List.init (apply_max - 1) ((+)2))
+	List.filter_map print_include (Util.SMap.bindings sem.ss_includes)
+
+let get_applys apply_max =
+	let mkvar x = MLTVar ([], x) in
+	let rec x2xn n =
+		let () = assert (n >= 2) in
+		List.init (n-1) (fun i -> Format.sprintf "arg%d" (i+2))
+	in
+	let apply1 = 
+		("apply1", None, [], None, MLTVar (["M"], "apply"))
+	in
+	let apply i =
+		if i = 1 then apply1 else
+		if i < 1 then assert false else
+		let x2xi = x2xn i in
+		let apply_prev = Format.sprintf "apply%d" (i-1) in
+		(
+			Format.sprintf "apply%d" i, (* name *)
+			None, (* comment *)
+			"k" :: "f" :: "arg1" :: x2xi, (* args *)
+			None, (* type *)
+			MLTLetStarIn (
+				MLPVar "_tmp",
+				MLTApp (mkvar "apply1", [mkvar "k"; mkvar "f"; mkvar "arg1"]),
+				MLTApp (
+					mkvar apply_prev,
+					MLTConstr (["M"], "Anon", None)
+					:: MLTVar ([], "_tmp")
+					:: List.map mkvar x2xi
+				)
+			) (* body *)
+		)
+	in
+	List.init apply_max (fun i -> MValDefs [apply (i+1)])
 
 (* writes the MakeInterpreter functor *)
-let print_makeinterpreter_functor apply_max sem ff =
-	Format.fprintf ff
-		"(** Module defining the specified values *)@,\
-		@[<v 2>module MakeInterpreter (F : UNSPEC)%a = struct@,\
-		include F@,let ( let* ) = M.bind%a%t%a%a@]@,end"
-		print_args sem
-		print_opens sem
-		(fun ff -> ())
-		print_applys apply_max
-		print_value_definitions sem
-
-
-
-let print_unspec_functor sem ff =
-	let print_one1 ff i =
-		let i' = String.capitalize_ascii i in
-		Format.fprintf ff "@,(%s:%s.INTERPRETER with module M = M)"
-		i' i'
+let makeinterpreter_functor apply_max sem =
+	let comment = " Module defining the specified values " in
+	let args = ("F",["UNSPEC"],[]) :: get_module_args sem in
+	let body =
+		[ MInclude ["F"]
+		; MValDefs [("( let* )", None, [], None, MLTVar (["M"], "bind"))]
+		] @ get_opens sem
+		@ get_applys apply_max
+		@ [ get_value_definitions sem
+		]
 	in
-	let print_one2 ff i =
-		let i' = String.capitalize_ascii i in
-		Format.fprintf ff "@,module %s = %s"
-		i' i'
-	in
-	Format.fprintf ff
-		"(** A default instantiation *)@,\
-		@[<v 2>module Unspec (M:MONAD) (T:TYPES)%a = struct@,%s@,%s@,%s%a%a%a%a@]@,end@,"
-		(print_includes_unspec print_one1) sem
-		"exception NotImplemented of string"
-		"include T"
-		"module M = M"
-		(print_includes_unspec print_one2) sem
-		(print_specified_types ~comm:false) sem
-		print_aliases sem
-		print_values_not_implemented sem
+	Functor (Some comment, "MakeInterpreter", args, body)
 
-let print_interpreter_module_type sem ski ff =
-	let print_one ff i =
-		let i' = String.capitalize_ascii i in
-		Format.fprintf ff "@,module %s:%s.INTERPRETER with module M = M"
-		i' i'
+let unspec_functor sem =
+	let com = " A default instantiation " in
+	let args =
+		let interp_args =
+			List.map (fun name -> 
+				let name = String.capitalize_ascii name in
+				(name, [name; "INTERPRETER"], ["M", ["M"]])
+			) !all_includes
+		in
+		("M", ["MONAD"], [])
+		:: ("T", ["TYPES"], [])
+		:: interp_args
 	in
-	Format.fprintf ff
-	"(** The module type for interpreters *)@,\
-	@[<v 2>module type INTERPRETER = sig@,\
-	module M:MONAD%a%a%a%a%a@]@,end" 
-	(print_includes print_one) sem
-	print_type_decls_ski ski
-	(print_spec_types_ski) ski
-	print_aliases_ski ski
-	(print_value_signatures_ski) ski
+	let included_modules =
+			List.map (fun name ->
+				let name = String.capitalize_ascii name in
+				MModuleAlias (name, [name; "INTERPRETER"], ["M", ["M"]])
+			) !all_includes
+	in
+	let body =
+		[ MException ("NotImplemented", MLTyString)
+		; MInclude ["T"]
+		; MModuleAlias ("M", ["M"], [])
+		] @ included_modules
+		@ MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
+		:: get_values_not_implemented sem
+	in
+	Functor (Some com, "Unspec", args, body)
+
+let interpreter_module_type sem ski =
+	let comment = " The module type for interpreters " in
+	let includes =
+		List.map (fun name ->
+			let name = String.capitalize_ascii name in
+			MTModule (name, [name;"INTERPRETER"], ["M", ["M"]])
+		) (Util.SMap.find "this" !dep_map)
+	in
+	let body =
+		MTModule ("M", ["MONAD"], [])
+		:: includes
+		@ unspec_type_decls_ski ski
+		@ MTTypeDefs (spec_types_ski ski @ get_aliases_ski ski)
+		:: get_value_signatures_ski ski
+	in
+	ModuleType (Some comment, "INTERPRETER", body)
 
 let build_map includes ss =
 	let rec aux map (i, (s, _)) =
@@ -914,7 +746,7 @@ let build_map includes ss =
 	()
 
 (* writes the interpreter generator modules to stdout *)
-let generate_interpreter includes sem ski: string =
+let generate_interpreter includes sem ski: ast =
 	let rec apply_max =
 		begin function
 		| TFunc (_, _, s) -> apply_max_skel s
@@ -950,15 +782,16 @@ let generate_interpreter includes sem ski: string =
 	let (sem,ski) =
 		Skeleton.protect_ss_and_ski necro_ocaml_keywords (sem,ski)
 	in
-	let ff = Format.str_formatter in
-	let () = Format.fprintf ff
-		"%s\n@[<v>%t\n@,%t\n@,%t\n@,%t\n@,%t\n@,%t@]@."
-"(** This file was automatically generated using necroml
-    See https://gitlab.inria.fr/skeletons/necro-ml/ for more informations *)"
-		(print_types_module_type sem) (* module type TYPES *)
-		(print_monad_module_type sem) (* module type MONAD *)
-		(print_unspec_module_type sem) (* module type UNSPEC *)
-		(print_unspec_functor sem) (* module Unspec (M:MONAD) (T:TYPES) *)
-		(print_interpreter_module_type sem ski) (* module type INTERPRETER *)
-		(print_makeinterpreter_functor apply_max sem) (* module MakeInterpreter (F: UNSPEC) …*)
-	in Format.flush_str_formatter ()
+	let comm = Comment " This file was automatically generated using necroml
+	See https://gitlab.inria.fr/skeletons/necro-ml/ for more informations " in
+	let ast =
+		[ comm
+		; types_module_type sem (* module type TYPES *)
+		; monad_module_type sem (* module type MONAD *)
+		; unspec_module_type sem (* module type UNSPEC *)
+		; unspec_functor sem (* module Unspec (M:MONAD) (T:TYPES) *)
+		; interpreter_module_type sem ski (* module type INTERPRETER *)
+		; makeinterpreter_functor apply_max sem (* module MakeInterpreter (F: UNSPEC) …*)
+		]
+	in
+	ast
