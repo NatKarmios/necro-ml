@@ -268,17 +268,28 @@ and get_value_of_skel sem s =
 				| Unspec -> MLTConstr (["M"], "Unspec", Some (MLTString m))
 				end
 			in
-			MLTLetStarIn (
-				MLPVar !tmp,
-				get_value_of_skel sem s1,
-				MLTApp (
-					MLTVar ([], "apply2"),
-					kind ::
-					MLTVar (from, m) ::
-					MLTVar ([], !tmp) ::
-					MLTFunc (get_pattern sem p, get_value_of_skel sem s2) :: []
-				)
-			)
+			begin match s1 with
+			| Return v1 ->
+					MLTApp (
+						MLTVar ([], "apply2"),
+						kind ::
+						MLTVar (from, m) ::
+						get_value_of_value sem v1 ::
+						MLTFunc (get_pattern sem p, get_value_of_skel sem s2) :: []
+					)
+			| _ ->
+					MLTLetStarIn (
+						MLPVar !tmp,
+						get_value_of_skel sem s1,
+						MLTApp (
+							MLTVar ([], "apply2"),
+							kind ::
+							MLTVar (from, m) ::
+							MLTVar ([], !tmp) ::
+							MLTFunc (get_pattern sem p, get_value_of_skel sem s2) :: []
+						)
+					)
+			end
 	| LetIn (Some (k, from, m, ta, _), p, s1, s2) ->
 			let kind =
 				begin match k with
@@ -388,7 +399,7 @@ let get_value_definitions sem =
 	let get_value_decl (name, ta, ty, t, c) =
 		(name, c, [], get_poly_sig ta ty, get_value_of_value sem t)
 	in
-	MValDefs (List.map get_value_decl spec_values)
+	MRecValDefs (List.map get_value_decl spec_values)
 
 
 (* returns [type t] for all unspecified types *)
@@ -454,7 +465,7 @@ let get_values_not_implemented sem =
 				[ MLTConstr ([], "NotImplemented", Some (MLTString name)) ]
 			)
 		in
-		MValDefs [(name, None, ["_"], None, error)]
+		MValDef (name, None, ["_"], None, error)
 	in
 	let vals =
 		sem.ss_values
@@ -591,18 +602,20 @@ let unspec_module_type sem =
 	in
 	let com = " All types, and the unspecified values " in
 	let def =
-		MTModule ("M", ["MONAD"], []) ::
-		List.map one_include !all_includes @
-		MTInclude "TYPES" ::
-		MTTypeDefs (specified_types ~comm:true sem @ get_aliases sem) ::
-		get_value_signatures ~all:false sem
+		MTBlock (
+			MTModule ("M", ["MONAD"], []) ::
+			List.map one_include !all_includes @
+			[MTInclude "TYPES"])
+		:: MTTypeDefs (specified_types ~comm:true sem @ get_aliases sem)
+		:: MTBlock (get_value_signatures ~all:false sem)
+		:: []
 	in
 	ModuleType (Some com, "UNSPEC", def)
 
 (* writes the TYPES module type *)
 let types_module_type sem =
 	let comment = " The unspecified types " in
-	ModuleType (Some comment, "TYPES", unspec_type_decl sem) (* TODO *)
+	ModuleType (Some comment, "TYPES", [MTBlock (unspec_type_decl sem)])
 
 let monad_module_type sem =
 	let com = " The interpretation monad " in
@@ -627,7 +640,7 @@ let monad_module_type sem =
 		; MTValDecl (None, "extract", MLTyArrow (t "a", MLTyVar "a"))
 		]
 	in
-	ModuleType (Some com, "MONAD", def)
+	ModuleType (Some com, "MONAD", [MTBlock def])
 
 let get_module_args sem: modargs =
 	let print_include (n, sem) =
@@ -673,7 +686,7 @@ let get_applys apply_max =
 			) (* body *)
 		)
 	in
-	List.init apply_max (fun i -> MValDefs [apply (i+1)])
+	List.init apply_max (fun i -> MValDef (apply (i+1)))
 
 (* writes the MakeInterpreter functor *)
 let makeinterpreter_functor apply_max sem =
@@ -681,11 +694,11 @@ let makeinterpreter_functor apply_max sem =
 	let args = ("F",["UNSPEC"],[]) :: get_module_args sem in
 	let body =
 		[ MInclude ["F"]
-		; MValDefs [("( let* )", None, [], None, MLTVar (["M"], "bind"))]
-		] @ get_opens sem
-		@ get_applys apply_max
-		@ [ get_value_definitions sem
-		]
+		; MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind"))
+		] @ MBlock (get_opens sem)
+		:: MBlock (get_applys apply_max)
+		:: get_value_definitions sem
+		:: []
 	in
 	Functor (Some comment, "MakeInterpreter", args, body)
 
@@ -709,12 +722,14 @@ let unspec_functor sem =
 			) !all_includes
 	in
 	let body =
-		[ MException ("NotImplemented", MLTyString)
-		; MInclude ["T"]
-		; MModuleAlias ("M", ["M"], [])
-		] @ included_modules
-		@ MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
-		:: get_values_not_implemented sem
+		MBlock (
+			MException ("NotImplemented", MLTyString)
+			:: MInclude ["T"]
+			:: MModuleAlias ("M", ["M"], [])
+			:: included_modules)
+		:: MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
+		:: MBlock (get_values_not_implemented sem)
+		:: []
 	in
 	Functor (Some com, "Unspec", args, body)
 
@@ -728,10 +743,11 @@ let interpreter_module_type sem ski =
 	in
 	let body =
 		MTModule ("M", ["MONAD"], [])
-		:: includes
-		@ unspec_type_decls_ski ski
-		@ MTTypeDefs (spec_types_ski ski @ get_aliases_ski ski)
-		:: get_value_signatures_ski ski
+		:: MTBlock includes
+		:: MTBlock (unspec_type_decls_ski ski)
+		:: MTTypeDefs (spec_types_ski ski @ get_aliases_ski ski)
+		:: MTBlock (get_value_signatures_ski ski)
+		:: []
 	in
 	ModuleType (Some comment, "INTERPRETER", body)
 

@@ -37,6 +37,29 @@ let print_from ff from =
 let print_type_var ff v =
 	fprintf ff "'%s" v
 
+let rec monoline v =
+	begin match v with
+	| MLTVar (f, name) -> true
+	| MLTConstr (f, c, None) -> true
+	| MLTConstr (f, c, Some t) -> monoline t
+	| MLTTop -> true
+	| MLTTuple [] | MLTTuple [_] -> assert false
+	| MLTTuple tl -> List.for_all monoline tl
+	| MLTRecord (None, fl) -> List.for_all (fun (_, _, v) -> monoline v) fl
+	| MLTRecord (Some t, fl) ->
+			List.for_all (fun (_, _, v) -> monoline v) fl && monoline t
+	| MLTFunc (p, t) -> false
+	| MLTField (t, f, n) -> monoline t
+	| MLTApp (t, tl) -> List.for_all monoline (t::tl)
+	| MLTLetIn (p, bound, body) -> false
+	| MLTLetStarIn (p, bound, body) -> false
+	| MLTMatchWith (t, l) -> false
+	| MLTString s -> true
+	| MLTList [] -> true
+	| MLTList [t] -> monoline t
+	| MLTList l -> false
+	end
+
 let rec print_type ff ty =
 	begin match ty with
 	| MLTyVar v -> print_type_var ff v
@@ -62,7 +85,23 @@ let rec print_type ff ty =
 			end
 	| MLTyTuple tl ->
 			let () = assert (List.length tl >= 2) in
-			Util.print_list ~sep:" * " print_type_protect ff tl
+			Util.print_list ~sep:" * " print_type_prod_comp ff tl
+	end
+
+and print_type_prod_comp ff ty =
+	begin match ty with
+	| MLTyVar _
+	| MLTyBase (_, [])
+	| MLTyFrom (_, _, [])
+	| MLTyUnit
+	| MLTyString
+	| MLTyBase (_, _ :: _)
+	| MLTyFrom (_, _, _ :: _)
+	| MLTyList _ ->
+			print_type ff ty
+	| MLTyArrow _
+	| MLTyTuple _ ->
+			fprintf ff "(%a)" print_type ty
 	end
 
 and print_type_protect ff ty =
@@ -133,51 +172,56 @@ let rec print_value ff v =
 				"{%a with %a}" print_value t
 				(Util.print_list ~sep:", " print_field) fl
 	| MLTFunc (p, t) ->
-			fprintf ff "fun %a -> %a" print_pattern_protect p print_value t
+			fprintf ff "function %a ->@,%a" print_pattern_protect p print_value t
 	| MLTField (t, f, n) ->
 			fprintf ff "%a.%a%s" print_value t print_from f n
 	| MLTApp (t, tl) ->
-			fprintf ff "%a %a" print_value_protect t
+			fprintf ff "@[<v 2>%a %a@]" print_value_protect t
 			(Util.print_list ~sep:" " print_value_protect) tl
 	| MLTLetIn (p, bound, body) ->
 			fprintf ff "@[<v 2>let %a =%ain@,%a"
 			print_pattern p
 			print_bind bound
 			print_value body
+	(* fold [let* p = M.ret y in …] into [let p = y in …] *)
+	| MLTLetStarIn (p, MLTApp (MLTVar (["M"], "ret"), [arg]), body) ->
+			print_value ff (MLTLetIn (p, arg, body))
 	| MLTLetStarIn (p, bound, body) ->
 			fprintf ff "@[<v 2>let* %a =%ain@,%a"
 			print_pattern p
 			print_bind bound
 			print_value body
 	| MLTMatchWith (t, l) ->
+			let space ff res =
+				if monoline res
+				then Format.fprintf ff " "
+				else Format.fprintf ff "@,"
+			in
 			let print_branch ff (pat, res) =
-				fprintf ff "@[<v 2>| %a ->@,%a@]" print_pattern pat print_value res
+				fprintf ff "@[<v 4>| %a ->%a%a@]" print_pattern pat space res print_value res
 			in
 			fprintf ff "begin match %a with@,%a@,end"
 			print_value t (pp_print_list print_branch) l
 	| MLTString s ->
 			fprintf ff "\"%s\"" s
+	| MLTList [] -> fprintf ff "[]"
+	| MLTList [v] when monoline v -> fprintf ff "[%a]" print_value v
 	| MLTList l ->
 			let print_value' ff v =
 				begin match v with
-				| MLTFunc _ -> fprintf ff "(%a)" print_value v
+				| MLTFunc _ -> fprintf ff "@[<v 2>(%a)@]" print_value v
 				| _ -> print_value ff v
 				end
 			in
-			fprintf ff "[%a]"
-			(Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff ";@,")
+			fprintf ff "[@,%a]"
+			(Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff " ;@,")
 				(fun ff -> Format.fprintf ff "%a" print_value')) l
 	end
 
 and print_bind ff v =
-	begin match v with
-	| MLTVar _ | MLTConstr (_, _, None) | MLTTop | MLTTuple _ | MLTRecord _
-	| MLTField _ | MLTMatchWith _ | MLTString _ | MLTList _ ->
-			fprintf ff " %a@] " print_value v
-	| MLTConstr (_, _, Some _) | MLTFunc _ | MLTApp _ | MLTLetIn _
-	| MLTLetStarIn _ ->
-			fprintf ff "@,%a@]@," print_value v
-	end
+	if monoline v
+	then fprintf ff " %a@] " print_value v
+	else fprintf ff "@,%a@]@," print_value v
 
 and print_value_protect ff v =
 	begin match v with
@@ -253,18 +297,31 @@ let print_type_defs ff defs =
 				(pp_print_list (print_type_def "and")) defs
 	end
 
-let print_val_def beg ff (name, com, args, ty, def) =
-	begin match ty with
-	| None ->
-		fprintf ff "%a@[<v 2>%s %s %a =@,%a@]"
-			print_com_nl com beg name
-			(Util.print_list ~sep:" " pp_print_string) args
-			print_value def
-	| Some ty ->
-		fprintf ff "%a@[<v 2>%s %s: %a %a =@,%a@]"
-			print_com_nl com beg name print_poly_type ty
-			(Util.print_list ~sep:" " pp_print_string) args
-			print_value def
+let rec print_val_def beg ff (name, com, args, ty, def) =
+	begin match ty, def with
+	| None, MLTFunc (MLPVar x, t) ->
+			print_val_def beg ff (name, com, args @ [x], ty, t)
+	| _ ->
+			let post_equal ff =
+				if monoline def
+				then Format.fprintf ff " "
+				else Format.fprintf ff "@,"
+			in
+			begin match ty with
+			| None ->
+				fprintf ff "%a@[<v 2>%s %s %a=%t%a@]"
+					print_com_nl com beg name
+					(Util.print_list ~sep:"" (fun ff x ->
+						Format.fprintf ff "%s " x)) args
+					post_equal
+					print_value def
+			| Some ty ->
+				fprintf ff "%a@[<v 2>%s %s: %a %a =%t%a@]"
+					print_com_nl com beg name print_poly_type ty
+					(Util.print_list ~sep:" " pp_print_string) args
+					post_equal
+					print_value def
+			end
 	end
 
 let print_val_defs ff defs =
@@ -277,7 +334,7 @@ let print_val_defs ff defs =
 				(pp_print_list (print_val_def "and")) defs
 	end
 
-let print_module_type_tld ff decl =
+let rec print_module_type_tld ff decl =
 	begin match decl with
 	| MTTypeDecl (com, args, name) ->
 			let print_args ff args =
@@ -301,12 +358,15 @@ let print_module_type_tld ff decl =
 				name (String.concat "." path) print_with withes
 	| MTInclude name ->
 			fprintf ff "include %s" name
+	| MTBlock decls ->
+			pp_print_list print_module_type_tld ff decls
 	end
 
-let print_functor_tld ff decl =
+let rec print_functor_tld ff decl =
 	begin match decl with
 	| MTypeDefs defs -> print_type_defs ff defs
-	| MValDefs defs -> print_val_defs ff defs
+	| MRecValDefs defs -> print_val_defs ff defs
+	| MValDef def -> print_val_def "let" ff def
 	| MInclude path -> fprintf ff "include %s" (String.concat "." path)
 	| MException (name, ty) ->
 			fprintf ff "exception %s of %a" name print_type ty
@@ -316,20 +376,38 @@ let print_functor_tld ff decl =
 				"module %s = %s%a"
 				name (String.concat "." def) 
 				print_with withes
+	| MBlock decls ->
+			pp_print_list print_functor_tld ff decls
 	end
 
 let rec clean_moduletype body =
 	begin match body with
 	| [] -> []
-	| MTTypeDefs [] :: q -> q
+	| MTBlock [] :: q -> clean_moduletype q
+	| MTBlock x :: q ->
+			let x = clean_moduletype x in
+			begin match x with
+			| [] -> clean_moduletype q
+			| [tld] -> clean_moduletype (tld :: q)
+			| _ -> MTBlock x :: clean_moduletype q
+			end
+	| MTTypeDefs [] :: q -> clean_moduletype q
 	| a :: q -> a :: clean_moduletype q
 	end
 
 let rec clean_module body =
 	begin match body with
 	| [] -> []
+	| MBlock [] :: q -> clean_module q
+	| MBlock x :: q ->
+			let x = clean_module x in
+			begin match x with
+			| [] -> clean_module q
+			| [tld] -> clean_module (tld :: q)
+			| _ -> MBlock x :: clean_module q
+			end
 	| MTypeDefs [] :: q -> q
-	| MValDefs [] :: q -> q
+	| MRecValDefs [] :: q -> q
 	| a :: q -> a :: clean_module q
 	end
 
@@ -345,6 +423,7 @@ let print_tld ff decl =
 					~pp_sep:(fun ff () -> fprintf ff "\n@,")
 					print_module_type_tld) body
 	| Functor (com, name, args, body) ->
+			let body = clean_module body in
 			let print_arg ff (name, modpath, withes) =
 				fprintf ff
 					"(%s: %s%a) "

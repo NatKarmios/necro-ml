@@ -54,6 +54,7 @@ type mlterm =
 	| MLTList of mlterm list
 
 type module_type_tld =
+	| MTBlock of module_type_tld list
 	| MTTypeDecl of comment option * args * type_name
 	| MTValDecl of comment option * val_name * mltype
 	| MTTypeDefs of type_def list
@@ -61,8 +62,10 @@ type module_type_tld =
 	| MTInclude of module_name
 
 type module_tld =
+	| MBlock of module_tld list
 	| MTypeDefs of type_def list
-	| MValDefs of (val_name * comment option * args * polytype option * mlterm) list
+	| MValDef of (val_name * comment option * args * polytype option * mlterm)
+	| MRecValDefs of (val_name * comment option * args * polytype option * mlterm) list
 	| MInclude of mod_path
 	| MException of string * mltype
 	| MOpen of mod_path
