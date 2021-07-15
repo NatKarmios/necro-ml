@@ -1,0 +1,100 @@
+open boolean
+open nat
+
+type list<a> =
+| Nil | Cons (a, list<a>)
+
+val map<a,b>: f:(a → b) → l:list<a> → list<b> =
+	branch
+		let Nil = l in Nil<b>
+	or
+		let Cons (x, q) = l in
+		let y = f x in
+		let r = map<a, b> f q in
+		Cons<b> (y, r)
+	end
+
+val append<a>: l:list<a> → m:list<a> → list<a> =
+	branch
+		let Nil = l in m
+	or
+		let Cons (x, q) = l in
+		let aux = append<a> q m in
+		Cons<a> (x, aux)
+	end
+
+val flatten<a>: l:list<list<a>> → list<a> =
+	branch
+		let Nil = l in Nil<a>
+	or
+		let Cons (x, q) = l in
+		let aux = flatten<a> q in
+		append<a> x aux
+	end
+
+val switch<a>: n:nat → a:a → l:list<a> → (a, list<a>) =
+	let Cons (x, q) = l in
+	branch
+		let Z = n in (x, Cons<a> (a, q))
+	or
+		let S m = n in
+		let (gotten, new_list) = switch<a> m a q in
+		(gotten, Cons<a> (x, new_list))
+	end
+
+val nth<a>: n:nat → l:list<a> → a =
+	let Cons (x, q) = l in
+	branch
+		let Z = n in x
+	or
+		let S m = n in
+		nth<a> m q
+	end
+
+val sub<a>: m:nat → n:nat → l:list<a> → list<a> =
+	(* Extract n elements of the list, beginning at position m *)
+	branch
+		let Z = m in
+		let Z = n in
+		Nil<a>
+	or
+		let Z = m in
+		let S n' = n in
+		let Cons (x, q) = l in
+		let aux = sub<a> Z n' q in
+		Cons<a> (x, aux)
+	or
+		let S m' = m in
+		let Cons (_, q) = l in
+		sub<a> m' n q
+	end
+
+val exists<a>: f:(a → boolean) → l:list<a> → boolean =
+	branch
+		let Nil = l in False
+	or
+		let Cons (x, q) = l in
+		branch
+			let True = f x in True
+		or
+			let False = f x in exists<a> f q
+		end
+	end
+
+val mem<a>: eq:(a → a → boolean) → v:a → l:list<a> → boolean =
+	let f = eq v in
+	exists<a> f l
+
+val forall<a>: f:(a → boolean) → l:list<a> → boolean =
+	branch
+		let Nil = l in True
+	or
+		let Cons (x, q) = l in
+		branch
+			let True = f x in
+			forall<a> f q
+		or
+			let False = f x in False
+		end
+	end
+

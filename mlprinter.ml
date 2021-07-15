@@ -25,14 +25,14 @@ let print_space_com ff com =
 let print_with ff withes =
 	let print_one_with ff (name, def) =
 		fprintf ff
-			" with %s = %s"
+			" with module %s = %s"
 			name
 			(String.concat "." def)
 	in
 	Util.print_list ~sep:"" print_one_with ff withes
 
 let print_from ff from =
-	pp_print_list (fun ff x -> fprintf ff "%s." x) ff from
+	Option.iter (fun x -> fprintf ff "%s." x) from
 
 let print_type_var ff v =
 	fprintf ff "'%s" v
@@ -73,7 +73,7 @@ let rec print_type ff ty =
 					fprintf ff "(%a) %a%s"
 					(Util.print_list ~sep:", " print_type) args print_from from s
 			end
-	| MLTyBase (s, args) -> print_type ff (MLTyFrom ([], s, args))
+	| MLTyBase (s, args) -> print_type ff (MLTyFrom (None, s, args))
 	| MLTyUnit -> fprintf ff "unit"
 	| MLTyString -> fprintf ff "string"
 	| MLTyList ty -> fprintf ff "%a list" print_type_protect ty
@@ -184,7 +184,7 @@ let rec print_value ff v =
 			print_bind bound
 			print_value body
 	(* fold [let* p = M.ret y in …] into [let p = y in …] *)
-	| MLTLetStarIn (p, MLTApp (MLTVar (["M"], "ret"), [arg]), body) ->
+	| MLTLetStarIn (p, MLTApp (MLTVar (Some "M", "ret"), [arg]), body) ->
 			print_value ff (MLTLetIn (p, arg, body))
 	| MLTLetStarIn (p, bound, body) ->
 			fprintf ff "@[<v 2>let* %a =%ain@,%a"
@@ -371,11 +371,10 @@ let rec print_functor_tld ff decl =
 	| MException (name, ty) ->
 			fprintf ff "exception %s of %a" name print_type ty
 	| MOpen path -> fprintf ff "open %s" (String.concat "." path)
-	| MModuleAlias (name, def, withes) ->
+	| MModuleAlias (name, def) ->
 			fprintf ff
-				"module %s = %s%a"
+				"module %s = %s"
 				name (String.concat "." def) 
-				print_with withes
 	| MBlock decls ->
 			pp_print_list print_functor_tld ff decls
 	end

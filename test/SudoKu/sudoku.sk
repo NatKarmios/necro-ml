@@ -1,132 +1,10 @@
-val sublist<a>: m:nat → n:nat → l:list<a> → list<a> =
-	(* Extract n elements of the list, beginning at position m *)
-	branch
-		let Z = m in
-		let Z = n in
-		Nil<a>
-	or
-		let Z = m in
-		let S n' = n in
-		let Cons (x, q) = l in
-		let aux = sublist<a> Z n' q in
-		Cons<a> (x, aux)
-	or
-		let S m' = m in
-		let Cons (_, q) = l in
-		sublist<a> m' n q
-	end
+open boolean
+open nat
+open list
 
-val list_map<a,b>: f:(a → b) → l:list<a> → list<b> =
-	branch
-		let Nil = l in Nil<b>
-	or
-		let Cons (x, q) = l in
-		let y = f x in
-		let r = list_map<a, b> f q in
-		Cons<b> (y, r)
-	end
-
-val list_append<a>: l:list<a> → m:list<a> → list<a> =
-	branch
-		let Nil = l in m
-	or
-		let Cons (x, q) = l in
-		let aux = list_append<a> q m in
-		Cons<a> (x, aux)
-	end
-
-val list_flatten<a>: l:list<list<a>> → list<a> =
-	branch
-		let Nil = l in Nil<a>
-	or
-		let Cons (x, q) = l in
-		let aux = list_flatten<a> q in
-		list_append<a> x aux
-	end
-
-val list_switch<a>: n:nat → a:a → l:list<a> → (a, list<a>) =
-	let Cons (x, q) = l in
-	branch
-		let Z = n in (x, Cons<a> (a, q))
-	or
-		let S m = n in
-		let (gotten, new_list) = list_switch<a> m a q in
-		(gotten, Cons<a> (x, new_list))
-	end
-
-val list_nth<a>: n:nat → l:list<a> → a =
-	let Cons (x, q) = l in
-	branch
-		let Z = n in x
-	or
-		let S m = n in
-		list_nth<a> m q
-	end
-
-type boolean =
-| True | False
-type list<a> =
-| Nil | Cons (a, list<a>)
-
-type nat =
-| Z | S nat
-
-val add: a:nat → b:nat → nat =
-	branch
-		let Z = a in b
-	or
-		let S a' = a in
-		let aux = add a' b in
-		S aux
-	end
-
-val mul: a:nat → b:nat → nat =
-	branch
-		let Z = a in Z
-	or
-		let S a' = a in
-		let aux = mul a' b in
-		add aux b
-	end
 
 type line := list<nat>
 type grid := (nat,list<list<nat>>)
-
-val eq: v1:nat → v2:nat → boolean =
-	branch
-		let (Z, Z) = (v1, v2) in True
-	or
-		let (Z, S _) = (v1, v2) in False
-	or
-		let (S _, Z) = (v1, v2) in False
-	or
-		let (S a, S b) = (v1, v2) in eq a b
-	end
-		
-val neg: b:boolean → boolean =
-	branch
-		let True = b in False
-	or
-		let False = b in True
-	end
-
-val neq: v1:nat → v2:nat → boolean =
-	let eq = eq v1 v2 in
-	neg eq
-
-val mem: v:nat → l:list<nat> → boolean =
-	branch
-		let Nil = l in False
-	or
-		let Cons (x, q) = l in
-		branch
-			let True = eq x v in
-			True
-		or
-			let False = eq x v in
-			mem v q
-		end
-	end
 
 val correct_set: l:line → boolean =
 	branch
@@ -139,24 +17,17 @@ val correct_set: l:line → boolean =
 		or
 			let False = eq Z x in
 			branch
-				let False = mem x q in
+				let False = mem<nat> eq x q in
 				correct_set q
 			or
-				let True = mem x q in
+				let True = mem<nat> eq x q in
 				False
 			end
 		end
 	end
 
-(** Checks whether all elements of the list are booleans *)
 val forall: l:list<boolean> → boolean =
-	branch
-		let Nil = l in True
-	or
-		let Cons (True, q) = l in forall q
-	or
-		let Cons (False, q) = l in False
-	end
+	list::forall<boolean> (λ x: boolean → x) l
 
 (** returns [range n + accu] *)
 val range_aux: n:nat → accu:list<nat> → list<nat> =
@@ -176,7 +47,7 @@ val range: n:nat → list<nat> =
     Lines are numeroted from 0 to size² - 1 *)
 val correct_line: g:grid → n:nat → boolean =
 		let (size, g) = g in
-		let line = list_nth<list<nat>> n g in
+		let line = nth<list<nat>> n g in
 		correct_set line
 
 (** Checks whether the square at position (x, y) is correct.
@@ -185,16 +56,16 @@ val correct_square: g:grid → x:nat → y:nat → boolean =
 	let (size, g) = g in
 	let x = mul x size in
 	let y = mul y size in
-	let lines = sublist<list<nat>> y size g in
-	let square = list_map<line,line>(λ l : line → sublist<nat> x size l) lines in
-	let values = list_flatten<nat> square in
+	let lines = list::sub<list<nat>> y size g in
+	let square = map<line,line>(λ l : line → list::sub<nat> x size l) lines in
+	let values = flatten<nat> square in
 	correct_set values
 
 (** Checks whether the n-th column is correct.
     Columns are numeroted from 0 to size² - 1 *)
 val correct_column: g:grid → n:nat → boolean =
 	let (size, g) = g in
-	let col = list_map<line,nat> (λ l: line → list_nth<nat> n l) g in
+	let col = map<line,nat> (λ l: line → nth<nat> n l) g in
 	correct_set col
 
 val correct_grid: g:grid → boolean =
@@ -202,23 +73,23 @@ val correct_grid: g:grid → boolean =
 	let range_n = range n in
 	let n2 = mul n n in
 	let range_n2 = range n2 in
-	let columns = list_map<nat,boolean> (λ n:nat → correct_column g n) range_n2 in
-	let lines = list_map<nat,boolean> (λ n:nat → correct_line g n) range_n2 in
-	let squares = list_map<nat,list<boolean>> (λ h:nat →
-		list_map<nat, boolean> (λ w:nat → correct_square g h w) range_n) range_n in
-	let squares_flat = list_flatten<boolean> squares in
+	let columns = map<nat,boolean> (λ n:nat → correct_column g n) range_n2 in
+	let lines = map<nat,boolean> (λ n:nat → correct_line g n) range_n2 in
+	let squares = map<nat,list<boolean>> (λ h:nat →
+		map<nat, boolean> (λ w:nat → correct_square g h w) range_n) range_n in
+	let squares_flat = flatten<boolean> squares in
 	let c = forall columns in
 	let l = forall lines in
 	let s = forall squares_flat in
 	forall (Cons<boolean> (c, Cons<boolean> (l, Cons<boolean> (s, Nil<boolean>))))
 
 val solved_line: l:line → boolean =
-	let l' = list_map<nat,boolean> (λ x:nat → neq Z x) l in
+	let l' = map<nat,boolean> (λ x:nat → neq Z x) l in
 	forall l'
 
 val solved: g:grid → boolean =
 	let (size, g) = g in
-	let g' = list_map<line,boolean> (λ l:line → solved_line l) g in
+	let g' = map<line,boolean> (λ l:line → solved_line l) g in
 	forall g'
 
 (** Pick an element of list l *)
@@ -236,9 +107,9 @@ val pick_nat: n:nat → nat =
 
 val insert: m:nat → n:nat → v:nat → g:list<list<nat>>
 		→ (nat, list<list<nat>>) =
-	let l = list_nth<list<nat>> m g in
-	let (w, new_l) = list_switch<nat> n v l in
-	let (_, new_g) = list_switch<list<nat>> m new_l g in
+	let l = nth<list<nat>> m g in
+	let (w, new_l) = switch<nat> n v l in
+	let (_, new_g) = switch<list<nat>> m new_l g in
 	(w, new_g)
 
 val get_first_zero_aux: grid:grid → m:nat → n:nat → (nat, nat) =
@@ -253,12 +124,12 @@ val get_first_zero_aux: grid:grid → m:nat → n:nat → (nat, nat) =
 			get_first_zero_aux grid (S m) Z
 		or
 			let False = eq n size2 in
-			let line = list_nth<list<nat>> m g in
+			let line = nth<list<nat>> m g in
 			branch
-				let Z = list_nth<nat> n line in
+				let Z = nth<nat> n line in
 				(m, n)
 			or
-				let S _ = list_nth<nat> n line in
+				let S _ = nth<nat> n line in
 				get_first_zero_aux grid m (S n)
 			end
 		end
@@ -289,7 +160,7 @@ val solve: g:grid → grid =
 val empty: n:nat → grid =
 	let n2=mul n n in
 	let range_n2 = range n2 in
-	let empty_line = list_map<nat,nat> (λ x : nat → Z) range_n2 in
-	let array = list_map<nat, line> (λ x: nat → empty_line) range_n2 in
+	let empty_line = map<nat,nat> (λ x : nat → Z) range_n2 in
+	let array = map<nat, line> (λ x: nat → empty_line) range_n2 in
 	(n, array)
 

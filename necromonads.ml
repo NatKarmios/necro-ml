@@ -60,15 +60,15 @@ module List = struct
 	type 'a t = 'a list
 	let ret x = [x]
 	let rec branch l =
-		List.concat (List.map (fun f -> f ()) l)
+		Stdlib.List.concat (Stdlib.List.map (fun f -> f ()) l)
 	let fail _ = []
 	let rec union_two l = function
 	| [] -> l
-	| a :: q -> (if List.mem a l then (fun x -> x) else (List.cons a)) (union_two l q)
+	| a :: q -> (if Stdlib.List.mem a l then (fun x -> x) else (Stdlib.List.cons a)) (union_two l q)
 	let rec union = function
 	| [] -> []
 	| a :: q -> union_two a (union q)
-	let bind l f = union (List.map f l)
+	let bind l f = union (Stdlib.List.map f l)
 	let apply _ f x = f x
 	let extract x =
 		begin match x with

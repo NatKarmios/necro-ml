@@ -8,7 +8,7 @@ type arg = string
 type args = arg list
 type type_name = string
 type val_name = string
-type from = module_name list
+type from = module_name option
 
 type mltype =
 	| MLTyVar of string
@@ -69,7 +69,7 @@ type module_tld =
 	| MInclude of mod_path
 	| MException of string * mltype
 	| MOpen of mod_path
-	| MModuleAlias of string * mod_path * withes
+	| MModuleAlias of string * mod_path
 
 type module_def = module_tld list
 type module_type_def = module_type_tld list

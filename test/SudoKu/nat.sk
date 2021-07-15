@@ -1,0 +1,38 @@
+open boolean
+
+type nat =
+| Z | S nat
+
+val add: a:nat → b:nat → nat =
+	branch
+		let Z = a in b
+	or
+		let S a' = a in
+		let aux = add a' b in
+		S aux
+	end
+
+val mul: a:nat → b:nat → nat =
+	branch
+		let Z = a in Z
+	or
+		let S a' = a in
+		let aux = mul a' b in
+		add aux b
+	end
+
+val eq: v1:nat → v2:nat → boolean =
+	branch
+		let (Z, Z) = (v1, v2) in True
+	or
+		let (Z, S _) = (v1, v2) in False
+	or
+		let (S _, Z) = (v1, v2) in False
+	or
+		let (S a, S b) = (v1, v2) in eq a b
+	end
+
+val neq: v1:nat → v2:nat → boolean =
+	let eq = eq v1 v2 in
+	neg eq
+

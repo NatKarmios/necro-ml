@@ -19,10 +19,14 @@ open Sudoku
 
 module Input = struct
 	include Unspec(Monads.ContPoly)(struct end)
+	(Interpreter_boolean)(Interpreter_nat)(Interpreter_list)
 end
 
-module Interp = MakeInterpreter(Input)
+module Interp = MakeInterpreter(Input)(Interpreter_boolean)(Interpreter_list)(Interpreter_nat)
+
 open Interp
+open Nat
+open List
 
 let rec nat_to_int =
 	begin function
@@ -43,8 +47,8 @@ let rec of_caml_list =
 	end
 
 let of_grid g =
-	of_caml_list (List.map 
-	(fun l -> of_caml_list (List.map int_to_nat l)) g)
+	of_caml_list (Stdlib.List.map 
+	(fun l -> of_caml_list (Stdlib.List.map int_to_nat l)) g)
 
 let print_nat n =
 	begin match n with
@@ -78,9 +82,8 @@ let print_grid (size, grid) =
 
 let solve g =
 	print_endline (print_grid g) ;
-	(solve g).cont
-		(fun g _ -> print_endline (print_grid g))
-		(fun s -> print_endline s)
+	let ans = M.extract (solve g) in
+	print_endline (print_grid ans)
 
 let parse file =
 	let ic = open_in file in
@@ -96,7 +99,7 @@ let parse file =
 	in
 	let lines = f [] in
 	let () = close_in ic in
-	let size2 = List.length lines in
+	let size2 = Stdlib.List.length lines in
 	let size =
 		begin match int_sqrt size2 1 with
 		| None -> failwith "The number of lines in the sudoku is not a square, that is incorrect."
@@ -116,10 +119,10 @@ let parse file =
 	let parse_line line =
 		let () = if String.length line <> size2 then
 			failwith "The sudoku is not a square." in
-		List.map (fun i ->
-			parse_char line.[i]) (List.init size2 (fun x -> x))
+		Stdlib.List.map (fun i ->
+			parse_char line.[i]) (Stdlib.List.init size2 (fun x -> x))
 	in
-	let grid = List.rev_map parse_line lines in
+	let grid = Stdlib.List.rev_map parse_line lines in
 	(int_to_nat size, of_grid grid)
 
 let _ =

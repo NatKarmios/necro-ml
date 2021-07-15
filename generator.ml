@@ -32,7 +32,7 @@ let necro_ocaml_keywords =
 	]
 
 let convert_from from =
-	List.map String.capitalize_ascii from
+	Option.map String.capitalize_ascii from
 
 (* Translate a type into its OCaml embedding *)
 let rec get_type (s: necro_type) =
@@ -45,7 +45,7 @@ let rec get_type (s: necro_type) =
 		| Product [_] -> assert false
 		| Product l -> MLTyTuple (List.map get_type l)
 		| Arrow (s1, s2) -> MLTyArrow (get_type s1,
-				MLTyFrom (["M"], "t", [get_type s2]))
+				MLTyFrom (Some "M", "t", [get_type s2]))
 	end
 
 let exhaustive_disjoint sem input_type input_values =
@@ -115,15 +115,15 @@ let is_exhaustive sem input_type input_values =
 
 let rec get_from_ski from ski =
 	begin match from with
-	| [] -> ski
-	| a :: q ->
-			Util.SMap.find a ski.ski_includes |> fst |> get_from_ski q 
+	| None -> ski
+	| Some a ->
+			Util.SMap.find a ski.ski_includes |> fst
 	end
 
 (* get an mlpattern out of a skel pattern *)
 let rec get_pattern sem p =
 	let get_record_field ((from, c, _), _, p) =
-		(from, c, get_pattern sem p)
+		(convert_from from, c, get_pattern sem p)
 	in
 	begin match p with
 	| PWild _ -> MLPWild
@@ -142,11 +142,11 @@ let rec get_pattern sem p =
 			let cdef = List.find (fun cs -> cs.s_name = c) (Option.get cl) in
 			let input = cdef.s_input_type in
 			if input = Product [] then
-				MLPConstr (from, c, None)
+				MLPConstr (convert_from from, c, None)
 			else
-				MLPConstr (from, c, Some MLPTop)
+				MLPConstr (convert_from from, c, Some MLPTop)
 	| PConstr ((from, c, _), _, p) ->
-			MLPConstr (from, c, Some (get_pattern sem p))
+			MLPConstr (convert_from from, c, Some (get_pattern sem p))
 	| PTuple [] ->
 			MLPTop
 	| PTuple pl ->
@@ -157,13 +157,13 @@ let rec get_pattern sem p =
 
 let rec get_value_of_value sem =
 	let get_record_field ((from, c, _), _, t) =
-		(from, c, get_value_of_value sem t)
+		(convert_from from, c, get_value_of_value sem t)
 	in
 	begin function
 	| TVar (TVLet (n, _)) ->
-			MLTVar ([], n)
+			MLTVar (None, n)
 	| TVar (TVValue (_, f, n, _, _)) ->
-			MLTVar (f, n)
+			MLTVar (convert_from f, n)
 	| TConstr ((from, c, ty), _, TTuple []) ->
 			(* if input type for constructor ty is () then the () is ignored. But if
 				 it is polymorphic, then OCaml expects the () to be present *)
@@ -178,11 +178,11 @@ let rec get_value_of_value sem =
 			let cdef = List.find (fun cs -> cs.s_name = c) (Option.get cl) in
 			let input = cdef.s_input_type in
 			if input = Product [] then
-				MLTConstr (from, c, None)
+				MLTConstr (convert_from from, c, None)
 			else
-				MLTConstr (from, c, Some MLTTop)
+				MLTConstr (convert_from from, c, Some MLTTop)
 	| TConstr ((from, c, _), _, t) ->
-			MLTConstr (from, c, Some (get_value_of_value sem t))
+			MLTConstr (convert_from from, c, Some (get_value_of_value sem t))
 	| TTuple [] -> MLTTop
 	| TTuple tl ->
 			MLTTuple (List.map (get_value_of_value sem) tl)
@@ -191,17 +191,17 @@ let rec get_value_of_value sem =
 	| TField (t, ta, (from, f, _)) ->
 			begin match int_of_string_opt f with
 			| None ->
-					MLTField (get_value_of_value sem t, from, f)
+					MLTField (get_value_of_value sem t, convert_from from, f)
 			| Some 1 when List.length ta = 2 ->
-					MLTApp (MLTVar ([], "fst"), [get_value_of_value sem t])
+					MLTApp (MLTVar (None, "fst"), [get_value_of_value sem t])
 			| Some 2 when List.length ta = 2 ->
-					MLTApp (MLTVar ([], "snd"), [get_value_of_value sem t])
+					MLTApp (MLTVar (None, "snd"), [get_value_of_value sem t])
 			| Some i ->
 					let l = List.init (List.length ta) (fun j ->
 						if j = i - 1 then MLPVar "j" else MLPWild)
 					in
 					let pattern = MLPTuple l in
-					MLTLetIn (pattern, get_value_of_value sem t, MLTVar ([], "x"))
+					MLTLetIn (pattern, get_value_of_value sem t, MLTVar (None, "x"))
 			end
 	| TRecord (t, tl) ->
 			MLTRecord (
@@ -213,19 +213,19 @@ let rec get_value_of_value sem =
 and get_value_of_skel sem s =
 	begin match s with
 	| Return t | Apply (t, []) ->
-			MLTApp (MLTVar (["M"], "ret"), [get_value_of_value sem t])
+			MLTApp (MLTVar (Some "M", "ret"), [get_value_of_value sem t])
 	| Apply (f, q) ->
 			let kind =
 				begin match f with
 				| TVar (TVValue (Unspec, f, n, _, _)) ->
-						MLTConstr (["M"], "Unspec", Some (MLTString n))
+						MLTConstr (Some "M", "Unspec", Some (MLTString n))
 				| TVar (TVValue (Spec, f, n, _, _)) ->
-						MLTConstr (["M"], "Spec", Some (MLTString n))
-				| _ -> MLTConstr (["M"], "Anon", None)
+						MLTConstr (Some "M", "Spec", Some (MLTString n))
+				| _ -> MLTConstr (Some "M", "Anon", None)
 				end
 			in
 			MLTApp (
-				MLTVar ([], Format.sprintf "apply%d" (List.length q)),
+				MLTVar (None, Format.sprintf "apply%d" (List.length q)),
 				kind ::
 				get_value_of_value sem f ::
 				List.map (get_value_of_value sem) q
@@ -244,7 +244,7 @@ and get_value_of_skel sem s =
 						get_value_of_value sem v1,
 						[
 							(get_pattern sem p, get_value_of_skel sem s2) ;
-							(MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTString ""]))
+							(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTString ""]))
 						]
 					)
 			| _ ->
@@ -252,10 +252,10 @@ and get_value_of_skel sem s =
 						MLPVar !tmp,
 						get_value_of_skel sem s1,
 						MLTMatchWith (
-							MLTVar ([], !tmp),
+							MLTVar (None, !tmp),
 							[
 								(get_pattern sem p, get_value_of_skel sem s2) ;
-								(MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTString ""]))
+								(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTString ""]))
 							]
 						)
 					)
@@ -264,16 +264,16 @@ and get_value_of_skel sem s =
 		when is_exhaustive sem (Skeleton.pattern_typ p) [p] ->
 			let kind =
 				begin match k with
-				| Spec -> MLTConstr (["M"], "Spec", Some (MLTString m))
-				| Unspec -> MLTConstr (["M"], "Unspec", Some (MLTString m))
+				| Spec -> MLTConstr (Some "M", "Spec", Some (MLTString m))
+				| Unspec -> MLTConstr (Some "M", "Unspec", Some (MLTString m))
 				end
 			in
 			begin match s1 with
 			| Return v1 ->
 					MLTApp (
-						MLTVar ([], "apply2"),
+						MLTVar (None, "apply2"),
 						kind ::
-						MLTVar (from, m) ::
+						MLTVar (convert_from from, m) ::
 						get_value_of_value sem v1 ::
 						MLTFunc (get_pattern sem p, get_value_of_skel sem s2) :: []
 					)
@@ -282,10 +282,10 @@ and get_value_of_skel sem s =
 						MLPVar !tmp,
 						get_value_of_skel sem s1,
 						MLTApp (
-							MLTVar ([], "apply2"),
+							MLTVar (None, "apply2"),
 							kind ::
 							MLTVar (from, m) ::
-							MLTVar ([], !tmp) ::
+							MLTVar (None, !tmp) ::
 							MLTFunc (get_pattern sem p, get_value_of_skel sem s2) :: []
 						)
 					)
@@ -293,18 +293,18 @@ and get_value_of_skel sem s =
 	| LetIn (Some (k, from, m, ta, _), p, s1, s2) ->
 			let kind =
 				begin match k with
-				| Spec -> MLTConstr (["M"], "Spec", Some (MLTString m))
-				| Unspec -> MLTConstr (["M"], "Unspec", Some (MLTString m))
+				| Spec -> MLTConstr (Some "M", "Spec", Some (MLTString m))
+				| Unspec -> MLTConstr (Some "M", "Unspec", Some (MLTString m))
 				end
 			in
 			MLTLetStarIn (
 				MLPVar !tmp,
 				get_value_of_skel sem s1,
 				MLTApp (
-					MLTVar ([], "apply2"),
+					MLTVar (None, "apply2"),
 					kind ::
 					MLTVar (from, m) ::
-					MLTVar ([], !tmp) ::
+					MLTVar (None, !tmp) ::
 					MLTFunc (
 						MLPVar !tmp,
 						get_value_of_skel sem
@@ -322,7 +322,7 @@ and get_value_of_skel sem s =
 								MLTFunc (MLPTop, get_value_of_skel sem sk)
 							) outs
 						in
-						MLTApp (MLTVar (["M"], "branch"), [MLTList branches])
+						MLTApp (MLTVar (Some "M", "branch"), [MLTList branches])
 				end
 	| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
 	end
@@ -338,7 +338,7 @@ and branch_to_match sem outs =
 		end
 	in
 	begin match outs with
-	| [] -> Some (MLTVar (["M"], "fail"))
+	| [] -> Some (MLTVar (Some "M", "fail"))
 	| LetIn (a, p, s1, s2) :: q when a = None ->
 			begin match aux a s1 q with
 			| None -> None
@@ -356,7 +356,7 @@ and branch_to_match sem outs =
 					in
 					let ok_branches = List.map get_branch patterns in
 					let fail_branch =
-						(MLPWild, MLTApp (MLTVar (["M"], "fail"),[MLTString ""]))
+						(MLPWild, MLTApp (MLTVar (Some "M", "fail"),[MLTString ""]))
 					in
 					let branches =
 						if exhaustive () then ok_branches else ok_branches @ [fail_branch]
@@ -368,7 +368,7 @@ and branch_to_match sem outs =
 							MLTLetStarIn (
 								MLPVar !tmp,
 								get_value_of_skel sem s1,
-								MLTMatchWith (MLTVar ([], !tmp), branches)
+								MLTMatchWith (MLTVar (None, !tmp), branches)
 							)
 					end
 			end
@@ -461,8 +461,8 @@ let get_values_not_implemented sem =
 		let error =
 			(* raise NotImplemented "%name" *)
 			MLTApp (
-				MLTVar ([], "raise"),
-				[ MLTConstr ([], "NotImplemented", Some (MLTString name)) ]
+				MLTVar (None, "raise"),
+				[ MLTConstr (None, "NotImplemented", Some (MLTString name)) ]
 			)
 		in
 		MValDef (name, None, ["_"], None, error)
@@ -510,7 +510,7 @@ let (specified_types, spec_types_ski):
 	let variant_type_decls =
 		List.map (fun (ty, c) ->
 			begin match ty with
-			| Base ([], name, Variant, args) ->
+			| Base (None, name, Variant, args) ->
 					TDVariant (get_comm ty, extract args, name, List.map constructor c)
 			| _ -> assert false
 			end) const
@@ -518,7 +518,7 @@ let (specified_types, spec_types_ski):
 	let record_type_decls =
 		List.map (fun (ty, f) ->
 			begin match ty with
-			| Base ([], name, Record, args) ->
+			| Base (None, name, Record, args) ->
 					TDRecord (get_comm ty, extract args, name, List.map field f)
 			| _ -> assert false
 			end) fields
@@ -549,7 +549,7 @@ let (specified_types, spec_types_ski):
 	let variant_type_decls =
 		List.map (fun (ty, c) ->
 			begin match ty with
-			| Base ([], name, Variant, args) ->
+			| Base (None, name, Variant, args) ->
 					TDVariant (get_comm ty, extract args, name, List.map constructor c)
 			| _ -> assert false
 			end) const
@@ -557,7 +557,7 @@ let (specified_types, spec_types_ski):
 	let record_type_decls =
 		List.map (fun (ty, f) ->
 			begin match ty with
-			| Base ([], name, Record, args) ->
+			| Base (None, name, Record, args) ->
 					TDRecord (get_comm ty, extract args, name, List.map field f)
 			| _ -> assert false
 			end) fields
@@ -582,7 +582,7 @@ let with_modules l =
 		let a_cap = String.capitalize_ascii a in
 		(a_cap, [a_cap])
 	in
-	List.map one_with l
+	("M", ["M"]) :: List.map one_with l
 
 (* Function to print "with module _ = _" *)
 let get_with l =
@@ -656,13 +656,13 @@ let get_opens sem: module_tld list =
 	List.filter_map print_include (Util.SMap.bindings sem.ss_includes)
 
 let get_applys apply_max =
-	let mkvar x = MLTVar ([], x) in
+	let mkvar x = MLTVar (None, x) in
 	let rec x2xn n =
 		let () = assert (n >= 2) in
 		List.init (n-1) (fun i -> Format.sprintf "arg%d" (i+2))
 	in
 	let apply1 = 
-		("apply1", None, [], None, MLTVar (["M"], "apply"))
+		("apply1", None, [], None, MLTVar (Some "M", "apply"))
 	in
 	let apply i =
 		if i = 1 then apply1 else
@@ -679,8 +679,8 @@ let get_applys apply_max =
 				MLTApp (mkvar "apply1", [mkvar "k"; mkvar "f"; mkvar "arg1"]),
 				MLTApp (
 					mkvar apply_prev,
-					MLTConstr (["M"], "Anon", None)
-					:: MLTVar ([], "_tmp")
+					MLTConstr (Some "M", "Anon", None)
+					:: MLTVar (None, "_tmp")
 					:: List.map mkvar x2xi
 				)
 			) (* body *)
@@ -694,7 +694,7 @@ let makeinterpreter_functor apply_max sem =
 	let args = ("F",["UNSPEC"],[]) :: get_module_args sem in
 	let body =
 		[ MInclude ["F"]
-		; MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind"))
+		; MValDef ("( let* )", None, [], None, MLTVar (Some "M", "bind"))
 		] @ MBlock (get_opens sem)
 		:: MBlock (get_applys apply_max)
 		:: get_value_definitions sem
@@ -718,14 +718,14 @@ let unspec_functor sem =
 	let included_modules =
 			List.map (fun name ->
 				let name = String.capitalize_ascii name in
-				MModuleAlias (name, [name; "INTERPRETER"], ["M", ["M"]])
+				MModuleAlias (name, [name])
 			) !all_includes
 	in
 	let body =
 		MBlock (
 			MException ("NotImplemented", MLTyString)
 			:: MInclude ["T"]
-			:: MModuleAlias ("M", ["M"], [])
+			:: MModuleAlias ("M", ["M"])
 			:: included_modules)
 		:: MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
 		:: MBlock (get_values_not_implemented sem)
