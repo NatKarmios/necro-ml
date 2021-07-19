@@ -59,8 +59,25 @@ let exhaustive_disjoint sem input_type input_values =
 				c = c' && included a a'
 		| PTuple t1, PTuple t2 ->
 				List.fold_left2 (fun b p1 p2 -> b && included p1 p2) true t1 t2
-		| PVar _, PTuple t -> List.for_all (fun t -> included p1 t) t
-		| PWild _, PTuple t -> List.for_all (fun t -> included p1 t) t
+		| (PVar _ | PWild _), PTuple t ->
+				List.for_all (fun t -> included p1 t) t
+		| (PVar _ | PWild _), PRecord fl ->
+				List.for_all (fun (_, _, p) -> included p1 p) fl
+		| PRecord fl1, PRecord fl2 ->
+				let fields fl = List.map (fun (x, _, _) -> x) fl in
+				let fields = List.sort_uniq compare (fields fl1 @ fields fl2) in
+				let reorder fl =
+					List.map (fun f ->
+						begin match List.find_opt (fun (x, y, z) -> x = f) fl1 with
+						| None ->
+								let ty = (fun (_, _, ty) -> ty) f in
+								PWild ty
+						| Some (_, _, p) -> p
+						end) fields
+				in
+				let fl1 = reorder fl1 in
+				let fl2 = reorder fl2 in
+				List.for_all2 (fun p1 p2 -> included p1 p2) fl1 fl2
 		| _, _ -> false
 	in
 		let rec union_two l1 = function
