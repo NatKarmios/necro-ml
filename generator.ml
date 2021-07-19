@@ -186,8 +186,14 @@ let rec get_value_of_value sem =
 	| TTuple [] -> MLTTop
 	| TTuple tl ->
 			MLTTuple (List.map (get_value_of_value sem) tl)
-	| TFunc (x, _, s) ->
-			MLTFunc (MLPVar x, get_value_of_skel sem s)
+	| TFunc (p, s) ->
+			if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
+				MLTFunc (get_pattern sem p, get_value_of_skel sem s)
+			else
+				MLTFunction (
+					(get_pattern sem p, get_value_of_skel sem s) ::
+					(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTString ""])) :: []
+				)
 	| TField (t, ta, (from, f, _)) ->
 			begin match int_of_string_opt f with
 			| None ->
@@ -765,7 +771,7 @@ let build_map includes ss =
 let generate_interpreter includes sem ski: ast =
 	let rec apply_max =
 		begin function
-		| TFunc (_, _, s) -> apply_max_skel s
+		| TFunc (_, s) -> apply_max_skel s
 		| _ -> 0
 		end
 	and apply_max_skel =

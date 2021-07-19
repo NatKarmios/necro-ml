@@ -48,7 +48,8 @@ let rec monoline v =
 	| MLTRecord (None, fl) -> List.for_all (fun (_, _, v) -> monoline v) fl
 	| MLTRecord (Some t, fl) ->
 			List.for_all (fun (_, _, v) -> monoline v) fl && monoline t
-	| MLTFunc (p, t) -> false
+	| MLTFunc _ -> false
+	| MLTFunction _ -> false
 	| MLTField (t, f, n) -> monoline t
 	| MLTApp (t, tl) -> List.for_all monoline (t::tl)
 	| MLTLetIn (p, bound, body) -> false
@@ -173,6 +174,10 @@ let rec print_value ff v =
 				(Util.print_list ~sep:", " print_field) fl
 	| MLTFunc (p, t) ->
 			fprintf ff "function %a ->@,%a" print_pattern_protect p print_value t
+	| MLTFunction l ->
+			fprintf ff "function %a"
+			(pp_print_list (fun ff (p, t) ->
+				fprintf ff "| %a ->@,%a@," print_pattern_protect p print_value t)) l
 	| MLTField (t, f, n) ->
 			fprintf ff "%a.%a%s" print_value t print_from f n
 	| MLTApp (t, tl) ->
@@ -228,7 +233,7 @@ and print_value_protect ff v =
 	| MLTVar _ | MLTConstr (_, _, None) | MLTTop | MLTTuple _ | MLTRecord _
 	| MLTField _ | MLTMatchWith _ | MLTString _ | MLTList _ ->
 			print_value ff v
-	| MLTConstr (_, _, Some _) | MLTFunc _ | MLTApp _ | MLTLetIn _
+	| MLTConstr (_, _, Some _) | MLTFunc _ | MLTFunction _ | MLTApp _ | MLTLetIn _
 	| MLTLetStarIn _ ->
 			Format.fprintf ff "(%a)" print_value v
 	end

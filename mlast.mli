@@ -45,6 +45,7 @@ type mlterm =
 	| MLTTuple of mlterm list
 	| MLTRecord of mlterm option * (from * string * mlterm) list
 	| MLTFunc of mlpattern * mlterm
+	| MLTFunction of (mlpattern * mlterm) list
 	| MLTField of mlterm * from * string
 	| MLTApp of mlterm * mlterm list
 	| MLTLetIn of mlpattern * mlterm * mlterm
