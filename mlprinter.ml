@@ -278,7 +278,7 @@ let print_type_def beg ff def =
 			   components, and are therefore treated as such *)
 			| [] -> assert false
 			| _ ->
-					fprintf ff "%a@[<v>%s %a =@,%a@]"
+					fprintf ff "%a@[<v>%s %a = {@,%a@,}@]"
 						print_com_nl com beg
 						print_type (MLTyBase (name, List.map (fun x -> MLTyVar x) a))
 						(pp_print_list print_field_def) fl
