@@ -2,7 +2,7 @@ opam-version: "2.0.2"
 
 name: "necroml"
 
-version: "2.1.4"
+version: "2.1.5.1"
 
 maintainer: "Louis Noizet <louis.noizet@irisa.fr>"
 
@@ -40,10 +40,10 @@ depends: [
   "ocamlfind"
   "menhir"
   "ocaml" {>= "4.09.0"}
-  "necrolib" {>= "1.4.3" & < "1.5"}
+  "necrolib" {>= "1.5" & < "1.6"}
 ]
 
 url {
- src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v2.1.4/necro-ml-v2.1.4.tar.gz"
- checksum: "md5=ea53d89dc573f7ba6e98ebe7b918e954"
+ src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v2.1.5.1/necro-ml-v2.1.5.1.tar.gz"
+ checksum: "md5=28fedd2bd20a653f41016cec8b040098"
 }

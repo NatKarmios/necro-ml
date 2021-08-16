@@ -20,7 +20,7 @@ TESTS = $(addprefix test/,$(shell ls test))
 
 NAME := necro-ml
 # WARNING : GIT TAG is prefixed with "v"
-VERSION := 2.1.4
+VERSION := 2.1.5.1
 TGZ := $(NAME)-v$(VERSION).tar.gz
 MD5TXT := $(TGZ).md5sum.txt
 
@@ -189,6 +189,7 @@ git_tag:
 
 # Change version number everywhere where it's specified, and update Makefile
 new_version:
+	@rm -f $(TGZ) $(MD5TXT)
 	@read -p "Please enter new version (current is $(VERSION)): " g;\
 	sed -i -r "s/^version: \"$(VERSION)\"/version: \"$$g\"/" ./opam;\
 	sed -i -r "s#archive/v$(VERSION)#archive/v$$g#" ./opam;\
