@@ -1,3 +1,18 @@
+module type MONAD = sig
+  type 'a t
+  val ret: 'a -> 'a t
+  val bind: 'a t -> ('a -> 'b t) -> 'b t
+  val branch: (unit -> 'a t) list -> 'a t
+  val fail: string -> 'a t
+  type kind =
+  | Anon
+  | Spec of string
+  | Unspec of string
+  val apply: kind -> ('a -> 'b t) -> 'a -> 'b t
+  val extract: 'a t -> 'a
+end
+
+
 module ID = struct
 	type kind = | Anon | Spec of string | Unspec of string
 	exception Branch_fail of string
@@ -20,9 +35,10 @@ let shuffle l =
 	let lrand = List.map (fun c -> (Random.bits (), c)) l in
 	List.sort compare lrand |> List.map snd
 
-module Rand (M: sig type _ t val branch: (unit -> 'a t) list -> 'a t end) = struct
+module Rand (M: MONAD) = struct
 	include M
-	let branch = branch
+	let branch l =
+		branch (shuffle l)
 end
 
 module List = struct
