@@ -80,10 +80,10 @@ let exhaustive_disjoint sem input_type input_values =
 				List.for_all2 (fun p1 p2 -> included p1 p2) fl1 fl2
 		| _, _ -> false
 	in
-		let rec union_two l1 = function
-			| [] -> l1
-			| a :: q -> (if List.mem a l1 then Util.id else List.cons a) (union_two l1 q)
-		in
+	let rec union_two l1 = function
+		| [] -> l1
+		| a :: q -> (if List.mem a l1 then Util.id else List.cons a) (union_two l1 q)
+	in
 	let rec union = function
 		| [] -> []
 		| a :: [] -> a
@@ -335,7 +335,6 @@ and get_value_of_skel sem s =
 					) :: []
 				)
 			)
-
 	| Branching (_, outs) ->
 				begin match branch_to_match sem outs with
 				| Some res -> res
@@ -361,7 +360,10 @@ and branch_to_match sem outs =
 		end
 	in
 	begin match outs with
-	| [] -> Some (MLTVar (Some "M", "fail"))
+	| [] -> Some (
+				MLTApp (MLTVar (Some "M", "fail"),
+				[MLTString "Empty branching"])
+			)
 	| LetIn (a, p, s1, s2) :: q when a = None ->
 			begin match aux a s1 q with
 			| None -> None
