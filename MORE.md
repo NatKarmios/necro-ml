@@ -25,7 +25,7 @@ installation of Necro ML
 ## `module type UNSPEC`
 
 The module type `UNSPEC` provides the definition for the specified types, and
-requires a definition for the non-specified types and values.
+requires a definition for the non-specified types and terms.
 
 A default instantiation of it is provided as `module Unspec` later in the file.
 `Unspec` is a functor that requires that you choose the monad and the
@@ -36,7 +36,7 @@ So the usual way to define a module of type `UNSPEC` is that way:
 ```ocaml
 module Input = struct
 	include Unspec(Monads.ID)(Types)
-	(* Definition of non-specified values
+	(* Definition of non-specified terms
 	…
 	*)
 end

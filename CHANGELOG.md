@@ -1,4 +1,6 @@
 # Changelog
+## Current changes
+- renaming "value" to "term" in the AST (and everywhere)
 
 ## Version 2.1.5
 - fix to handle record patterns

@@ -7,7 +7,7 @@ type modargs = modarg list
 type arg = string
 type args = arg list
 type type_name = string
-type val_name = string
+type term_name = string
 type from = module_name option
 
 type mltype =
@@ -57,7 +57,7 @@ type mlterm =
 type module_type_tld =
 	| MTBlock of module_type_tld list
 	| MTTypeDecl of comment option * arg option list * type_name
-	| MTValDecl of comment option * val_name * mltype
+	| MTValDecl of comment option * term_name * mltype
 	| MTTypeDefs of type_def list
 	| MTModule of module_name * mod_path * withes
 	| MTInclude of module_name
@@ -65,8 +65,8 @@ type module_type_tld =
 type module_tld =
 	| MBlock of module_tld list
 	| MTypeDefs of type_def list
-	| MValDef of (val_name * comment option * args * polytype option * mlterm)
-	| MRecValDefs of (val_name * comment option * args * polytype option * mlterm) list
+	| MValDef of (term_name * comment option * args * polytype option * mlterm)
+	| MRecValDefs of (term_name * comment option * args * polytype option * mlterm) list
 	| MInclude of mod_path
 	| MException of string * mltype
 	| MOpen of mod_path

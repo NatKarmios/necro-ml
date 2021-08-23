@@ -26,9 +26,6 @@ val correct_set: l:line → boolean =
 		end
 	end
 
-val forall: l:list<boolean> → boolean =
-	list::forall<boolean> (λ x: boolean → x) l
-
 (** returns [range n + accu] *)
 val range_aux: n:nat → accu:list<nat> → list<nat> =
 	branch
@@ -45,8 +42,7 @@ val range: n:nat → list<nat> =
 
 (** Checks whether the n-th line is correct.
     Lines are numeroted from 0 to size² - 1 *)
-val correct_line: g:grid → n:nat → boolean =
-		let (size, g) = g in
+val correct_line: g:list<list<nat>> → n:nat → boolean =
 		let line = nth<list<nat>> n g in
 		correct_set line
 
@@ -63,8 +59,7 @@ val correct_square: g:grid → x:nat → y:nat → boolean =
 
 (** Checks whether the n-th column is correct.
     Columns are numeroted from 0 to size² - 1 *)
-val correct_column: g:grid → n:nat → boolean =
-	let (size, g) = g in
+val correct_column: g:list<list<nat>> → n:nat → boolean =
 	let col = map<line,nat> (λ l: line → nth<nat> n l) g in
 	correct_set col
 
@@ -73,31 +68,29 @@ val correct_grid: g:grid → boolean =
 	let range_n = range n in
 	let n2 = mul n n in
 	let range_n2 = range n2 in
-	let columns = map<nat,boolean> (λ n:nat → correct_column g n) range_n2 in
-	let lines = map<nat,boolean> (λ n:nat → correct_line g n) range_n2 in
-	let squares = map<nat,list<boolean>> (λ h:nat →
-		map<nat, boolean> (λ w:nat → correct_square g h w) range_n) range_n in
-	let squares_flat = flatten<boolean> squares in
-	let c = forall columns in
-	let l = forall lines in
-	let s = forall squares_flat in
-	forall (Cons<boolean> (c, Cons<boolean> (l, Cons<boolean> (s, Nil<boolean>))))
+	let c = forall<nat> (λ n:nat → correct_column g' n) range_n2 in
+	let l = forall<nat> (λ n:nat → correct_line g' n) range_n2 in
+	let s =
+		forall<nat> (λ h:nat →
+			forall<nat> (λ w:nat →
+				correct_square g h w) range_n) range_n in
+	forall<boolean> (λ x:boolean → x)
+		(Cons<boolean> (c, Cons<boolean> (l, Cons<boolean> (s, Nil<boolean>))))
 
 val solved_line: l:line → boolean =
-	let l' = map<nat,boolean> (λ x:nat → neq Z x) l in
-	forall l'
+	forall<nat> (λ x:nat → neq Z x) l
 
 val solved: g:grid → boolean =
-	let (size, g) = g in
-	let g' = map<line,boolean> (λ l:line → solved_line l) g in
-	forall g'
+	let (_, g) = g in
+	forall<line> solved_line g
 
 (** Pick an element of list l *)
 val pick<a>: l:list<a> → a =
+	let Cons (x, q) = l in
 	branch
-		let Cons (x, q) = l in x
+		x
 	or
-		let Cons (x, q) = l in pick<a> q
+		pick<a> q
 	end
 
 (** pick a nat < n *)
@@ -160,7 +153,7 @@ val solve: g:grid → grid =
 val empty: n:nat → grid =
 	let n2=mul n n in
 	let range_n2 = range n2 in
-	let empty_line = map<nat,nat> (λ x : nat → Z) range_n2 in
-	let array = map<nat, line> (λ x: nat → empty_line) range_n2 in
+	let empty_line = map<nat,nat> (λ _ : nat → Z) range_n2 in
+	let array = map<nat, line> (λ _: nat → empty_line) range_n2 in
 	(n, array)
 
