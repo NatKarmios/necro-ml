@@ -56,7 +56,7 @@ type mlterm =
 
 type module_type_tld =
 	| MTBlock of module_type_tld list
-	| MTTypeDecl of comment option * args * type_name
+	| MTTypeDecl of comment option * arg option list * type_name
 	| MTValDecl of comment option * val_name * mltype
 	| MTTypeDefs of type_def list
 	| MTModule of module_name * mod_path * withes

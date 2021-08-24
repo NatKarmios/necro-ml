@@ -171,7 +171,7 @@ let rec print_value ff v =
 			in
 			fprintf ff
 				"{%a with %a}" print_value t
-				(Util.print_list ~sep:", " print_field) fl
+				(Util.print_list ~sep:"; " print_field) fl
 	| MLTFunc (p, t) ->
 			fprintf ff "function %a ->@,%a" print_pattern_protect p print_value t
 	| MLTFunction l ->
@@ -252,7 +252,7 @@ let print_constr_def ff (name, ty, com) =
 	begin match ty with
 	| None ->
 			fprintf ff "| %s%a" name print_space_com com
-	| Some (MLTyTuple _ as ty) ->
+	| Some (MLTyTuple _ | MLTyArrow _ as ty) ->
 			fprintf ff "| %s of (%a)%a" name print_type ty print_space_com com
 	| Some ty ->
 			fprintf ff "| %s of %a%a" name print_type ty print_space_com com
@@ -343,13 +343,19 @@ let rec print_module_type_tld ff decl =
 	begin match decl with
 	| MTTypeDecl (com, args, name) ->
 			let print_args ff args =
+				let print_arg ff arg =
+					begin match arg with
+					| Some v -> fprintf ff "'%s" v
+					| None -> fprintf ff "_"
+					end
+				in
 				begin match args with
 				| [] -> ()
 				| [ arg ] ->
-						fprintf ff "%a " print_type_var arg
+						fprintf ff "%a " print_arg arg
 				| _ ->
 						fprintf ff
-							"(%a) " (Util.print_list ~sep:", " print_type_var) args
+							"(%a) " (Util.print_list ~sep:", " print_arg) args
 				end
 			in
 			fprintf ff

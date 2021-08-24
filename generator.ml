@@ -435,7 +435,7 @@ let (unspec_type_decl, unspec_type_decls_ski) =
 		| Product _ | Variable _ | Alias _ | Arrow _ ->
 				assert false
 		| Base (_, s, _, args) ->
-				MTTypeDecl (c, List.map (fun _ -> "_") args, s)
+				MTTypeDecl (c, List.map (fun _ -> None) args, s)
 		end
 	in
 	(begin fun sem ->
@@ -646,7 +646,7 @@ let monad_module_type sem =
 	let com = " The interpretation monad " in
 	let def =
 		let t a = MLTyBase ("t", [MLTyVar a]) in
-		[ MTTypeDecl (None, ["a"], "t")
+		[ MTTypeDecl (None, [Some "a"], "t")
 		; MTValDecl ( None,"ret", MLTyArrow (MLTyVar "a", t "a"))
 		; MTValDecl ( None,"bind",
 			MLTyArrow (t "a", MLTyArrow (MLTyArrow (MLTyVar "a", t "b"), t "b")))
