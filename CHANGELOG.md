@@ -1,5 +1,6 @@
 # Changelog
-## Current changes
+
+## Version 2.2
 - renaming "value" to "term" in the AST (and everywhere)
 
 ## Version 2.1.5

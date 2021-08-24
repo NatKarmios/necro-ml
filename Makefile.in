@@ -20,7 +20,7 @@ TESTS = $(addprefix test/,$(shell ls test))
 
 NAME := necro-ml
 # WARNING : GIT TAG is prefixed with "v"
-VERSION := 2.1.6
+VERSION := 2.2
 TGZ := $(NAME)-v$(VERSION).tar.gz
 MD5TXT := $(TGZ).md5sum.txt
 
