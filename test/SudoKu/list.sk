@@ -4,7 +4,7 @@ open nat
 type list<a> =
 | Nil | Cons (a, list<a>)
 
-val map<a,b>: f:(a → b) → l:list<a> → list<b> =
+val map<a,b> (f:a → b) (l:list<a>): list<b> =
 	branch
 		let Nil = l in Nil<b>
 	or
@@ -14,7 +14,7 @@ val map<a,b>: f:(a → b) → l:list<a> → list<b> =
 		Cons<b> (y, r)
 	end
 
-val append<a>: l:list<a> → m:list<a> → list<a> =
+val append<a> (l:list<a>) (m:list<a>): list<a> =
 	branch
 		let Nil = l in m
 	or
@@ -23,7 +23,7 @@ val append<a>: l:list<a> → m:list<a> → list<a> =
 		Cons<a> (x, aux)
 	end
 
-val flatten<a>: l:list<list<a>> → list<a> =
+val flatten<a> (l:list<list<a>>): list<a> =
 	branch
 		let Nil = l in Nil<a>
 	or
@@ -32,7 +32,7 @@ val flatten<a>: l:list<list<a>> → list<a> =
 		append<a> x aux
 	end
 
-val switch<a>: n:nat → a:a → l:list<a> → (a, list<a>) =
+val switch<a> (n:nat) (a:a) (l:list<a>): (a, list<a>) =
 	let Cons (x, q) = l in
 	branch
 		let Z = n in (x, Cons<a> (a, q))
@@ -42,7 +42,7 @@ val switch<a>: n:nat → a:a → l:list<a> → (a, list<a>) =
 		(gotten, Cons<a> (x, new_list))
 	end
 
-val nth<a>: n:nat → l:list<a> → a =
+val nth<a> (n:nat) (l:list<a>): a =
 	let Cons (x, q) = l in
 	branch
 		let Z = n in x
@@ -51,7 +51,7 @@ val nth<a>: n:nat → l:list<a> → a =
 		nth<a> m q
 	end
 
-val sub<a>: m:nat → n:nat → l:list<a> → list<a> =
+val sub<a> (m:nat) (n:nat) (l:list<a>): list<a> =
 	(* Extract n elements of the list, beginning at position m *)
 	branch
 		let Z = m in
@@ -69,7 +69,7 @@ val sub<a>: m:nat → n:nat → l:list<a> → list<a> =
 		sub<a> m' n q
 	end
 
-val exists<a>: f:(a → boolean) → l:list<a> → boolean =
+val exists<a> (f:a → boolean) (l:list<a>): boolean =
 	branch
 		let Nil = l in False
 	or
@@ -81,11 +81,11 @@ val exists<a>: f:(a → boolean) → l:list<a> → boolean =
 		end
 	end
 
-val mem<a>: eq:(a → a → boolean) → v:a → l:list<a> → boolean =
+val mem<a> (eq:a → a → boolean) (v:a) (l:list<a>): boolean =
 	let f = eq v in
 	exists<a> f l
 
-val forall<a>: f:(a → boolean) → l:list<a> → boolean =
+val forall<a> (f:a → boolean) (l:list<a>): boolean =
 	branch
 		let Nil = l in True
 	or

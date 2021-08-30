@@ -1,7 +1,7 @@
 type boolean =
 | True | False
 
-val neg: b:boolean → boolean =
+val neg (b:boolean): boolean =
 	branch
 		let True = b in False
 	or
