@@ -27,8 +27,6 @@ let necro_ocaml_keywords =
 	"module"; "open"; "mutable"; "new"; "nonrec"; "object"; "of"; "open"; "or";
 	"private"; "rec"; "sig"; "struct"; "then"; "to"; "true"; "try"; "type"; "val";
 	"virtual"; "when"; "while"; "with" ;
-	(* ocaml generation reserved keywords *)
-	"NotImplemented"
 	]
 
 let convert_from from =
