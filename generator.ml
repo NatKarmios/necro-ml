@@ -132,7 +132,10 @@ let rec get_from_ski from ski =
 	begin match from with
 	| None -> ski
 	| Some a ->
-			Util.SMap.find a ski.ski_includes |> fst
+			begin match Util.SMap.find_opt a ski.ski_includes with
+			| None -> assert false
+			| Some (ski, _) -> ski
+			end
 	end
 
 (* get an mlpattern out of a skel pattern *)
@@ -153,8 +156,18 @@ let rec get_pattern sem p =
 				end
 			in
 			let ski = get_from_ski f (Skeleton.ski_of_ss sem) in
-			let (_, _, cl) = Util.SMap.find ty ski.ski_types in
-			let cdef = List.find (fun cs -> cs.s_name = c) (Option.get cl) in
+			let cl =
+				begin match Util.SMap.find_opt ty ski.ski_types with
+				| None -> assert false
+				| Some (_, _, cl) -> cl
+				end
+			in
+			let cdef =
+				begin match List.find_opt (fun cs -> cs.s_name = c) (Option.get cl) with
+				| Some cdef -> cdef
+				| None -> assert false
+				end
+			in
 			let input = cdef.s_input_type in
 			if input = Product [] then
 				MLPConstr (convert_from from, c, None)
@@ -189,8 +202,18 @@ let rec get_term_of_term sem =
 				end
 			in
 			let ski = get_from_ski f (Skeleton.ski_of_ss sem) in
-			let (_, _, cl) = Util.SMap.find ty ski.ski_types in
-			let cdef = List.find (fun cs -> cs.s_name = c) (Option.get cl) in
+			let cl =
+				begin match Util.SMap.find_opt ty ski.ski_types with
+				| None -> assert false
+				| Some (_, _, cl) -> cl
+				end
+			in
+			let cdef =
+				begin match List.find_opt (fun cs -> cs.s_name = c) (Option.get cl) with
+				| Some cdef -> cdef
+				| None -> assert false
+				end
+			in
 			let input = cdef.s_input_type in
 			if input = Product [] then
 				MLTConstr (convert_from from, c, None)
@@ -618,7 +641,12 @@ let get_with l =
 (* writes the UNSPEC module type *)
 let unspec_module_type sem =
 	let one_include i =
-		let l = Util.SMap.find i !dep_map in
+		let l =
+			begin match Util.SMap.find_opt i !dep_map with
+			| None -> assert false
+			| Some l -> l
+			end
+		in
 		let i' = String.capitalize_ascii i in
 		let withes = (with_modules l) in
 		MTModule (i', [i'; "INTERPRETER"], withes)
@@ -762,7 +790,7 @@ let interpreter_module_type sem ski =
 		List.map (fun name ->
 			let name = String.capitalize_ascii name in
 			MTModule (name, [name;"INTERPRETER"], ["M", ["M"]])
-		) (Util.SMap.find "this" !dep_map)
+		) (match Util.SMap.find_opt "this" !dep_map with None -> assert false | Some x -> x)
 	in
 	let body =
 		MTModule ("M", ["MONAD"], [])
