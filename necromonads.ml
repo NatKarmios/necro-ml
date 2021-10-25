@@ -4,17 +4,12 @@ module type MONAD = sig
   val bind: 'a t -> ('a -> 'b t) -> 'b t
   val branch: (unit -> 'a t) list -> 'a t
   val fail: string -> 'a t
-  type kind =
-  | Anon
-  | Spec of string
-  | Unspec of string
-  val apply: kind -> ('a -> 'b t) -> 'a -> 'b t
+  val apply: ('a -> 'b t) -> 'a -> 'b t
   val extract: 'a t -> 'a
 end
 
 
 module ID = struct
-	type kind = | Anon | Spec of string | Unspec of string
 	exception Branch_fail of string
 	type 'a t = 'a
 	let ret x = x
@@ -26,7 +21,7 @@ module ID = struct
 		end
 	let fail s = raise (Branch_fail s)
 	let bind x f = f x
-	let apply _ f x = f x
+	let apply f x = f x
 	let extract x = x
 end
 
@@ -42,7 +37,6 @@ module Rand (M: MONAD) = struct
 end
 
 module List = struct
-	type kind = | Anon | Spec of string | Unspec of string
 	type 'a t = 'a list
 	let ret x = [x]
 	let rec branch l =
@@ -55,7 +49,7 @@ module List = struct
 	| [] -> []
 	| a :: q -> union_two a (union q)
 	let bind l f = union (Stdlib.List.map f l)
-	let apply _ f x = f x
+	let apply f x = f x
 	let extract x =
 		begin match x with
 		| a :: q -> a
@@ -64,7 +58,6 @@ module List = struct
 end
 
 module Cont = struct
-	type kind = | Anon | Spec of string | Unspec of string
 	type fcont = string -> unit
 	type 'a cont = 'a -> fcont -> unit
 	type 'a t = 'a cont -> fcont -> unit
@@ -76,15 +69,14 @@ module Cont = struct
 		| [] -> fcont "No branch matches"
 		| b :: bs ->
 			(b ()) k (fun _ -> branch bs k fcont)
-	let apply _ f x = f x
+	let apply f x = f x
 	let extract (x: 'a t) =
-		let y = ref (Obj.magic 0: 'a) in
-		let () = x (fun a _ -> y:=a) (fun s -> failwith s) in
-		!y
+		let y = ref None in
+		let () = x (fun a _ -> y:=Some a) (fun s -> failwith s) in
+		Option.get !y
 end
 
 module ContPoly = struct
-	type kind = | Anon | Spec of string | Unspec of string
 	type 'b fcont = string -> 'b
 	type ('a,'b) cont = 'a -> 'b fcont -> 'b
 	type 'a t = {cont: 'b. (('a,'b) cont -> 'b fcont -> 'b)}
@@ -96,13 +88,12 @@ module ContPoly = struct
 		match l with
 		| [] -> fcont "No branch matches"
 		| b :: bs -> (b ()).cont k (fun _ -> (branch bs).cont k fcont) }
-	let apply _ f x = f x
+	let apply f x = f x
 	let extract x =
 		x.cont (fun a _ -> a) (fun s -> failwith s)
 end
 
 module Bfs = struct
-	type kind = | Anon | Spec of string | Unspec of string
 	type 'a t =
 		| Ret : 'a -> 'a t
 		| Bind : ('b t * ('b -> 'a t)) -> 'a t
@@ -137,6 +128,6 @@ module Bfs = struct
 		| Branch l when Queue.is_empty l -> failwith "No result"
 		| y -> let y' = eval_step y in eval y'
 		end
-	let apply _ f x = Apply (f, x)
+	let apply f x = Apply (f, x)
 	let extract x = eval x
 end

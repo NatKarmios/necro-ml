@@ -1,5 +1,9 @@
 # Changelog
 
+## Version
+- Remove `kind` from interpretation monad
+- Remove `is_exhaustive` and `is_disjoint` (sent to necrolib)
+
 ## Version 2.2
 - renaming "value" to "term" in the AST (and everywhere)
 

@@ -46,88 +46,6 @@ let rec get_type (s: necro_type) =
 				MLTyFrom (Some "M", "t", [get_type s2]))
 	end
 
-let exhaustive_disjoint sem input_type input_terms =
-	(* Check that the pattern [p1] is included in pattern [p2], that is, a term which
-	 * matches [p1] matches also [p2] *)
-	let rec included (p1:pattern) (p2:pattern) =
-		match p1, p2 with
-		| _, PVar _ -> true
-		| _, PWild _ -> true
-		| PConstr (c, _, a), PConstr (c', _, a') ->
-				c = c' && included a a'
-		| PTuple t1, PTuple t2 ->
-				List.fold_left2 (fun b p1 p2 -> b && included p1 p2) true t1 t2
-		| (PVar _ | PWild _), PTuple t ->
-				List.for_all (fun t -> included p1 t) t
-		| (PVar _ | PWild _), PRecord fl ->
-				List.for_all (fun (_, _, p) -> included p1 p) fl
-		| PRecord fl1, PRecord fl2 ->
-				let fields fl = List.map (fun (x, _, _) -> x) fl in
-				let fields = List.sort_uniq compare (fields fl1 @ fields fl2) in
-				let reorder fl =
-					List.map (fun f ->
-						begin match List.find_opt (fun (x, y, z) -> x = f) fl1 with
-						| None ->
-								let ty = (fun (_, _, ty) -> ty) f in
-								PWild ty
-						| Some (_, _, p) -> p
-						end) fields
-				in
-				let fl1 = reorder fl1 in
-				let fl2 = reorder fl2 in
-				List.for_all2 (fun p1 p2 -> included p1 p2) fl1 fl2
-		| _, _ -> false
-	in
-	let rec union_two l1 = function
-		| [] -> l1
-		| a :: q -> (if List.mem a l1 then Util.id else List.cons a) (union_two l1 q)
-	in
-	let rec union = function
-		| [] -> []
-		| a :: [] -> a
-		| a :: b :: q -> union ((union_two a b) :: q)
-	in
-	let match_all = PVar ("", input_type) in
-	let refined = List.fold_left (fun pl p ->
-		union (List.map (Skeleton.common_refinement sem input_type p) pl))
-		[match_all] input_terms
-	in
-	let rec aux accu1 term accu2 =
-		begin match accu2 with
-		| [] when List.exists (fun p -> included p term) accu1 -> accu1
-		| [] -> term :: accu1
-		| a :: q when List.exists (fun p -> included p term) accu1
-		|| List.exists (fun p -> included p term) accu2 ->
-				aux accu1 a q
-		| a :: q ->
-				aux (term :: accu1) a q
-		end
-	in
-	let refined =
-		begin match refined with
-		| a :: q -> aux [] a q
-		| [] -> []
-		end
-	in
-	let exhaustive () =
-		List.for_all (fun p -> List.exists (included p) input_terms) refined
-	in
-	let disjoint () =
-		let rec ex2 p =
-			begin function
-			| [] -> false
-			| a :: q when p a -> List.exists p q
-			| a :: q -> ex2 p q
-			end
-		in
-		List.for_all (fun p -> not (ex2 (included p) input_terms)) refined
-	in
-	(exhaustive, disjoint)
-
-let is_exhaustive sem input_type input_terms =
-	let (x, _) = exhaustive_disjoint sem input_type input_terms in
-	x ()
-
 let rec get_from_ski from ski =
 	begin match from with
 	| None -> ski
@@ -225,7 +143,7 @@ let rec get_term_of_term sem =
 	| TTuple tl ->
 			MLTTuple (List.map (get_term_of_term sem) tl)
 	| TFunc (p, s) ->
-			if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
+			if Skeleton.is_exhaustive sem (Skeleton.pattern_typ p) [p] then
 				MLTFunc (get_pattern sem p, get_term_of_skel sem s)
 			else
 				MLTFunction (
@@ -259,23 +177,13 @@ and get_term_of_skel sem s =
 	| Return t | Apply (t, []) ->
 			MLTApp (MLTVar (Some "M", "ret"), [get_term_of_term sem t])
 	| Apply (f, q) ->
-			let kind =
-				begin match f with
-				| TVar (TVTerm (Unspec, f, n, _, _)) ->
-						MLTConstr (Some "M", "Unspec", Some (MLTString n))
-				| TVar (TVTerm (Spec, f, n, _, _)) ->
-						MLTConstr (Some "M", "Spec", Some (MLTString n))
-				| _ -> MLTConstr (Some "M", "Anon", None)
-				end
-			in
 			MLTApp (
 				MLTVar (None, Format.sprintf "apply%d" (List.length q)),
-				kind ::
 				get_term_of_term sem f ::
 				List.map (get_term_of_term sem) q
 			)
 	| LetIn (None, p, s1, s2) ->
-		if is_exhaustive sem (Skeleton.pattern_typ p) [p] then
+		if Skeleton.is_exhaustive sem (Skeleton.pattern_typ p) [p] then
 			MLTLetStarIn (
 				get_pattern sem p,
 				get_term_of_skel sem s1,
@@ -305,18 +213,11 @@ and get_term_of_skel sem s =
 					)
 			end
 	| LetIn (Some (k, from, m, ta, _), p, s1, s2)
-		when is_exhaustive sem (Skeleton.pattern_typ p) [p] ->
-			let kind =
-				begin match k with
-				| Spec -> MLTConstr (Some "M", "Spec", Some (MLTString m))
-				| Unspec -> MLTConstr (Some "M", "Unspec", Some (MLTString m))
-				end
-			in
+		when Skeleton.is_exhaustive sem (Skeleton.pattern_typ p) [p] ->
 			begin match s1 with
 			| Return v1 ->
 					MLTApp (
 						MLTVar (None, "apply2"),
-						kind ::
 						MLTVar (convert_from from, m) ::
 						get_term_of_term sem v1 ::
 						MLTFunc (get_pattern sem p, get_term_of_skel sem s2) :: []
@@ -327,7 +228,6 @@ and get_term_of_skel sem s =
 						get_term_of_skel sem s1,
 						MLTApp (
 							MLTVar (None, "apply2"),
-							kind ::
 							MLTVar (from, m) ::
 							MLTVar (None, !tmp) ::
 							MLTFunc (get_pattern sem p, get_term_of_skel sem s2) :: []
@@ -393,10 +293,13 @@ and branch_to_match sem outs =
 					(* if patterns are disjoint, we can use a [match with]. If the pattern
 					   matching is not exhaustive, we add a catch-all
 						 Otherwise, we return [None] to signal we can't do it *)
-					let (exhaustive, disjoint) =
-						exhaustive_disjoint sem (Skeleton.pattern_typ p) (List.map fst patterns)
+					let exhaustive = Skeleton.is_exhaustive sem
+						(Skeleton.pattern_typ p) (List.map fst patterns)
 					in
-					if not (disjoint ()) then None else
+					let disjoint = Skeleton.is_disjoint sem
+						(Skeleton.pattern_typ p) (List.map fst patterns)
+					in
+					if not disjoint then None else
 					let get_branch (x,y) = 
 						(get_pattern sem x, get_term_of_skel sem y)
 					in
@@ -405,7 +308,7 @@ and branch_to_match sem outs =
 						(MLPWild, MLTApp (MLTVar (Some "M", "fail"),[MLTString ""]))
 					in
 					let branches =
-						if exhaustive () then ok_branches else ok_branches @ [fail_branch]
+						if exhaustive then ok_branches else ok_branches @ [fail_branch]
 					in
 					Some begin match s1 with
 					| Return v1 ->
@@ -679,15 +582,9 @@ let monad_module_type sem =
 		; MTValDecl (None, "branch",
 			MLTyArrow (MLTyList (MLTyArrow (MLTyUnit, t "a")), t "a"))
 		; MTValDecl (None, "fail", MLTyArrow (MLTyString, t "a"))
-		; MTTypeDefs [ TDVariant (None, [], "kind",
-				[ ("Anon", None, None)
-				; ("Spec", Some MLTyString, None)
-				; ("Unspec", Some MLTyString, None)
-				]
-			)]
 		; MTValDecl (None, "apply",
 			let a_bt = MLTyArrow (MLTyVar "a", t "b") in
-			MLTyArrow (MLTyBase ("kind", []), MLTyArrow (a_bt, a_bt)))
+			MLTyArrow (a_bt, a_bt))
 		; MTValDecl (None, "extract", MLTyArrow (t "a", MLTyVar "a"))
 		]
 	in
@@ -723,15 +620,14 @@ let get_applys apply_max =
 		(
 			Format.sprintf "apply%d" i, (* name *)
 			None, (* comment *)
-			"k" :: "f" :: "arg1" :: x2xi, (* args *)
+			"f" :: "arg1" :: x2xi, (* args *)
 			None, (* type *)
 			MLTLetStarIn (
 				MLPVar "_tmp",
-				MLTApp (mkvar "apply1", [mkvar "k"; mkvar "f"; mkvar "arg1"]),
+				MLTApp (mkvar "apply1", [mkvar "f"; mkvar "arg1"]),
 				MLTApp (
 					mkvar apply_prev,
-					MLTConstr (Some "M", "Anon", None)
-					:: MLTVar (None, "_tmp")
+					MLTVar (None, "_tmp")
 					:: List.map mkvar x2xi
 				)
 			) (* body *)

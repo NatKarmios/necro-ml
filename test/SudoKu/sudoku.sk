@@ -52,8 +52,8 @@ val correct_square (g:grid) (x:nat) (y:nat): boolean =
 	let (size, g) = g in
 	let x = mul x size in
 	let y = mul y size in
-	let lines = list::sub<list<nat>> y size g in
-	let square = map<line,line>(λ l : line → list::sub<nat> x size l) lines in
+	let lines = sub<list<nat>> y size g in
+	let square = map<line,line>(λ l : line → sub<nat> x size l) lines in
 	let values = flatten<nat> square in
 	correct_set values
 
