@@ -235,18 +235,11 @@ and get_term_of_skel sem s =
 					)
 			end
 	| LetIn (Some (k, from, m, ta, _), p, s1, s2) ->
-			let kind =
-				begin match k with
-				| Spec -> MLTConstr (Some "M", "Spec", Some (MLTString m))
-				| Unspec -> MLTConstr (Some "M", "Unspec", Some (MLTString m))
-				end
-			in
 			MLTLetStarIn (
 				MLPVar !tmp,
 				get_term_of_skel sem s1,
 				MLTApp (
 					MLTVar (None, "apply2"),
-					kind ::
 					MLTVar (from, m) ::
 					MLTVar (None, !tmp) ::
 					MLTFunc (
