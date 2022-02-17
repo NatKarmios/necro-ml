@@ -45,8 +45,8 @@ let rec monoline v =
 	| MLTTop -> true
 	| MLTTuple [] | MLTTuple [_] -> assert false
 	| MLTTuple tl -> List.for_all monoline tl
-	| MLTRecord (None, fl) -> List.for_all (fun (_, _, v) -> monoline v) fl
-	| MLTRecord (Some t, fl) ->
+	| MLTRecMake fl -> List.for_all (fun (_, _, v) -> monoline v) fl
+	| MLTRecWith (t, fl) ->
 			List.for_all (fun (_, _, v) -> monoline v) fl && monoline t
 	| MLTFunc _ -> false
 	| MLTFunction _ -> false
@@ -160,12 +160,12 @@ let rec print_term ff v =
 	| MLTTuple [] | MLTTuple [_] -> assert false
 	| MLTTuple tl ->
 			fprintf ff "(%a)" (Util.print_list ~sep:", " print_term) tl
-	| MLTRecord (None, fl) ->
+	| MLTRecMake fl ->
 			let print_field ff (f, n, v) =
 				Format.fprintf ff "%a%s = %a" print_from f n print_term v
 			in
 			fprintf ff "{%a}" (Util.print_list ~sep:"; " print_field) fl
-	| MLTRecord (Some t, fl) ->
+	| MLTRecWith (t, fl) ->
 			let print_field ff (f, n, v) =
 				Format.fprintf ff "%a%s = %a" print_from f n print_term v
 			in
@@ -230,8 +230,8 @@ and print_bind ff v =
 
 and print_term_protect ff v =
 	begin match v with
-	| MLTVar _ | MLTConstr (_, _, None) | MLTTop | MLTTuple _ | MLTRecord _
-	| MLTField _ | MLTMatchWith _ | MLTString _ | MLTList _ ->
+	| MLTVar _ | MLTConstr (_, _, None) | MLTTop | MLTTuple _ | MLTRecMake _
+	| MLTRecWith _ | MLTField _ | MLTMatchWith _ | MLTString _ | MLTList _ ->
 			print_term ff v
 	| MLTConstr (_, _, Some _) | MLTFunc _ | MLTFunction _ | MLTApp _ | MLTLetIn _
 	| MLTLetStarIn _ ->

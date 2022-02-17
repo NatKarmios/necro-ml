@@ -165,9 +165,11 @@ let rec get_term_of_term sem =
 					let pattern = MLPTuple l in
 					MLTLetIn (pattern, get_term_of_term sem t, MLTVar (None, "x"))
 			end
-	| TRecord (t, tl) ->
-			MLTRecord (
-				Option.map (get_term_of_term sem) t,
+	| TRecMake tl ->
+			MLTRecMake (List.map get_record_field tl)
+	| TRecSet (t, tl) ->
+			MLTRecWith (
+				get_term_of_term sem t,
 				List.map get_record_field tl
 			)
 	end

@@ -45,5 +45,5 @@ depends: [
 
 url {
  src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v2.3.2/necro-ml-v2.3.2.tar.gz"
- checksum: "md5=ae70aea9bb1a4a22e9920f75a4fc1f48"
+ checksum: "md5=3d8ec97c73a9f8d1af0df5fa49b5eb36"
 }

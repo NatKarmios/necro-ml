@@ -1,6 +1,9 @@
 # Changelog
 
-## Version
+## Version 2.4
+- Update to Necro Lib 0.7
+
+## Version 2.3
 - Remove `kind` from interpretation monad
 - Remove `is_exhaustive` and `is_disjoint` (sent to necrolib)
 

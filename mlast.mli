@@ -43,7 +43,8 @@ type mlterm =
 	| MLTConstr of from * string * mlterm option
 	| MLTTop
 	| MLTTuple of mlterm list
-	| MLTRecord of mlterm option * (from * string * mlterm) list
+	| MLTRecMake of (from * string * mlterm) list
+	| MLTRecWith of mlterm * (from * string * mlterm) list
 	| MLTFunc of mlpattern * mlterm
 	| MLTFunction of (mlpattern * mlterm) list
 	| MLTField of mlterm * from * string
