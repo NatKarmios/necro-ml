@@ -56,6 +56,35 @@ let rec get_from_ski from ski =
 			end
 	end
 
+let get_constr_sem sem ty: signature list =
+	let open Skeleton in
+	let open Util in
+	let get_constructors s ski =
+		let from, name =
+			let s = unalias_rec s in
+			begin match s with
+			| Base (from, name, _, _) -> from, name
+			| _ -> assert false
+			end
+		in
+		let ski' =
+			begin match from with
+			| None -> ski
+			| Some a ->
+					begin match SMap.find_opt a ski.ski_includes with
+					| None -> assert false
+					| Some (ski', _) -> ski'
+					end
+			end
+		in
+		begin match SMap.find_opt name ski'.ski_types with
+		| Some (_, _, None) -> assert false
+		| Some (_, _, Some x) -> x
+		| None -> assert false
+		end
+	in
+	get_constructors ty (ski_of_ss sem)
+
 (* get an mlpattern out of a skel pattern *)
 let rec get_pattern sem p =
 	let get_record_field ((from, c, _), _, p) =
@@ -143,7 +172,7 @@ let rec get_term_of_term sem =
 	| TTuple tl ->
 			MLTTuple (List.map (get_term_of_term sem) tl)
 	| TFunc (p, s) ->
-			if Skeleton.is_exhaustive sem (Skeleton.pattern_typ p) [p] then
+			if Skeleton.is_exhaustive (get_constr_sem sem) (Skeleton.pattern_typ p) [p] then
 				MLTFunc (get_pattern sem p, get_term_of_skel sem s)
 			else
 				MLTFunction (
@@ -185,7 +214,8 @@ and get_term_of_skel sem s =
 				List.map (get_term_of_term sem) q
 			)
 	| LetIn (None, p, s1, s2) ->
-		if Skeleton.is_exhaustive sem (Skeleton.pattern_typ p) [p] then
+		if Skeleton.is_exhaustive (get_constr_sem sem) (Skeleton.pattern_typ p) [p]
+		then
 			MLTLetStarIn (
 				get_pattern sem p,
 				get_term_of_skel sem s1,
@@ -215,7 +245,7 @@ and get_term_of_skel sem s =
 					)
 			end
 	| LetIn (Some (k, from, m, ta, _), p, s1, s2)
-		when Skeleton.is_exhaustive sem (Skeleton.pattern_typ p) [p] ->
+		when Skeleton.is_exhaustive (get_constr_sem sem) (Skeleton.pattern_typ p) [p] ->
 			begin match s1 with
 			| Return v1 ->
 					MLTApp (
@@ -252,73 +282,19 @@ and get_term_of_skel sem s =
 				)
 			)
 	| Branching (_, outs) ->
-				begin match branch_to_match sem outs with
-				| Some res -> res
-				| None ->
-						let branches =
-							List.map (fun sk ->
-								MLTFunc (MLPTop, get_term_of_skel sem sk)
-							) outs
-						in
-						MLTApp (MLTVar (Some "M", "branch"), [MLTList branches])
-				end
+			let branches =
+				List.map (fun sk ->
+					MLTFunc (MLPTop, get_term_of_skel sem sk)
+				) outs
+			in
+			MLTApp (MLTVar (Some "M", "branch"), [MLTList branches])
+	| Match (sm, _, outs) ->
+			let branches =
+				List.map (Util.pair_app (get_pattern sem) (get_term_of_skel sem)) outs
+			in
+			MLTMatchWith (get_term_of_skel sem sm, branches)
 	| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
 	end
-
-and branch_to_match sem outs =
-	let rec aux a s1 =
-		begin function
-		| [] -> Some []
-		| LetIn (a', p, s1', s2) :: q
-			when a = a' && s1 = s1' ->
-				Option.bind (aux a s1 q) (fun l -> Some ((p, s2) :: l))
-		| _ -> None
-		end
-	in
-	begin match outs with
-	| [] -> Some (
-				MLTApp (MLTVar (Some "M", "fail"),
-				[MLTString "Empty branching"])
-			)
-	| LetIn (a, p, s1, s2) :: q when a = None ->
-			begin match aux a s1 q with
-			| None -> None
-			| Some l ->
-					let patterns = (p, s2) :: l in
-					(* if patterns are disjoint, we can use a [match with]. If the pattern
-					   matching is not exhaustive, we add a catch-all
-						 Otherwise, we return [None] to signal we can't do it *)
-					let exhaustive = Skeleton.is_exhaustive sem
-						(Skeleton.pattern_typ p) (List.map fst patterns)
-					in
-					let disjoint = Skeleton.is_disjoint sem
-						(Skeleton.pattern_typ p) (List.map fst patterns)
-					in
-					if not disjoint then None else
-					let get_branch (x,y) = 
-						(get_pattern sem x, get_term_of_skel sem y)
-					in
-					let ok_branches = List.map get_branch patterns in
-					let fail_branch =
-						(MLPWild, MLTApp (MLTVar (Some "M", "fail"),[MLTString ""]))
-					in
-					let branches =
-						if exhaustive then ok_branches else ok_branches @ [fail_branch]
-					in
-					Some begin match s1 with
-					| Return v1 ->
-							MLTMatchWith (get_term_of_term sem v1, branches)
-					| _ ->
-							MLTLetStarIn (
-								MLPVar !tmp,
-								get_term_of_skel sem s1,
-								MLTMatchWith (MLTVar (None, !tmp), branches)
-							)
-					end
-			end
-	| _ -> None
-	end
-
 
 
 
@@ -718,6 +694,10 @@ let generate_interpreter includes sem ski: ast =
 				(max (apply_max_skel s1) (apply_max_skel s2))
 		| LetIn (None, _, s1, s2) -> max (apply_max_skel s1) (apply_max_skel s2)
 		| Return t -> apply_max t
+		| Match (s, _, psl) ->
+				max
+					(apply_max_skel s)
+					(List.fold_left max 0 (List.map (Util.comp snd apply_max_skel) psl))
 		| Apply (t1, l1) ->
 				List.fold_left (fun a b -> max a (apply_max b)) (List.length l1) (t1::l1)
 		| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
