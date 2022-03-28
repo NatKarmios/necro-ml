@@ -288,11 +288,11 @@ and get_term_of_skel sem s =
 				) outs
 			in
 			MLTApp (MLTVar (Some "M", "branch"), [MLTList branches])
-	| Match (sm, _, outs) ->
+	| Match (tm, _, outs) ->
 			let branches =
 				List.map (Util.pair_app (get_pattern sem) (get_term_of_skel sem)) outs
 			in
-			MLTMatchWith (get_term_of_skel sem sm, branches)
+			MLTMatchWith (get_term_of_term sem tm, branches)
 	| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
 	end
 
@@ -694,9 +694,9 @@ let generate_interpreter includes sem ski: ast =
 				(max (apply_max_skel s1) (apply_max_skel s2))
 		| LetIn (None, _, s1, s2) -> max (apply_max_skel s1) (apply_max_skel s2)
 		| Return t -> apply_max t
-		| Match (s, _, psl) ->
+		| Match (t, _, psl) ->
 				max
-					(apply_max_skel s)
+					(apply_max t)
 					(List.fold_left max 0 (List.map (Util.comp snd apply_max_skel) psl))
 		| Apply (t1, l1) ->
 				List.fold_left (fun a b -> max a (apply_max b)) (List.length l1) (t1::l1)

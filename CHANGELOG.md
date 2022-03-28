@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 2.5.1
+- Update to fix in Necro Lib (0.8.4)
+
 ## Version 2.5
 - Update to Necro Lib 0.8
 - not generating matches except where there is already one
