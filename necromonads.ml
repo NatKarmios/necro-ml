@@ -62,13 +62,14 @@ module Cont = struct
 	type 'a cont = 'a -> fcont -> unit
 	type 'a t = 'a cont -> fcont -> unit
 	let ret (x: 'a) = fun (k:'a cont) fcont -> k x fcont
-	let bind (x: 'a t) (f: 'a -> 'b t) = fun k fcont -> x (fun v fcont' -> f v k fcont') fcont
+	let bind (x: 'a t) (f: 'a -> 'b t) =
+		fun k fcont -> x (fun v fcont' -> f v k fcont') fcont
 	let fail s = fun k fcont -> fcont s
 	let rec branch l = fun k fcont ->
-		match l with
+		begin match l with
 		| [] -> fcont "No branch matches"
-		| b :: bs ->
-			(b ()) k (fun _ -> branch bs k fcont)
+		| b :: bs -> (b ()) k (fun _ -> branch bs k fcont)
+		end
 	let apply f x = f x
 	let extract (x: 'a t) =
 		let y = ref None in
