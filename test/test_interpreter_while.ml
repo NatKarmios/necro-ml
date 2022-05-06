@@ -9,18 +9,11 @@ module rec T: sig
 		type lit = int
 		type vint = int
 		type state = Unspec(Monads.ID)(T).value SMap.t
-		type 'a st = state -> 'a * state
 	end = T
 
 
 module Unspec = struct
 	include Unspec(Monads.ID)(T)
-  let bind x f =
-    function s ->
-      let (y, s') = x s in
-      f y s'
-  let ret x = fun s -> (x, s)
-
   let litToVal lit = Int lit
   let read ident = fun state -> (SMap.find ident state, state)
   let write (ident, value) = fun state ->
