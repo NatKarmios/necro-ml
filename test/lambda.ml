@@ -83,24 +83,13 @@ module MakeInterpreter (F: UNSPEC) = struct
 
   let rec eval s =
     M.ret (function l ->
-      M.branch [
-        (function () ->
-          begin match l with
-          | Lam (x, t) -> M.ret (Clos (x, t, s))
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Var x -> apply1 getEnv (x, s)
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | App (t1, t2) ->
-              let* Clos (x, t, s') = apply2 eval s t1 in
-              let* w = apply2 eval s t2 in
-              let* s'' = apply1 extEnv (s', x, w) in
-              apply2 eval s'' t
-          | _ -> M.fail ""
-          end)])
+      begin match l with
+      | Lam (x, t) -> M.ret (Clos (x, t, s))
+      | Var x -> apply1 getEnv (x, s)
+      | App (t1, t2) ->
+          let* Clos (x, t, s') = apply2 eval s t1 in
+          let* w = apply2 eval s t2 in
+          let* s'' = apply1 extEnv (s', x, w) in
+          apply2 eval s'' t
+      end)
 end

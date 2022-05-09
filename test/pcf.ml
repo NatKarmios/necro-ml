@@ -113,57 +113,34 @@ module MakeInterpreter (F: UNSPEC) = struct
 
   let rec eval =
     function (s, t) ->
-    M.branch [
-      (function () ->
-        begin match t with
-        | Lam (x, body) -> apply1 mkClos (x, body, s)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Var v -> apply1 getEnv (v, s)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | App (t1, t2) ->
-            let* f = apply1 eval (s, t1) in
-            let* (x, body, env) = apply1 getClos f in
-            let* v = apply1 eval (s, t2) in
-            let* nenv = apply1 extEnv (env, x, v) in
-            apply1 eval (nenv, body)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Const n ->
-            let* x = apply1 intOfLit n in
-            apply1 mkInt x
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Plus (t1, t2) ->
-            let* v1 = apply1 eval (s, t1) in
-            let* x1 = apply1 getInt v1 in
-            let* v2 = apply1 eval (s, t2) in
-            let* x2 = apply1 getInt v2 in
-            let* x = apply1 plus (x1, x2) in
-            apply1 mkInt x
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | IfZero (cond, ifz, ifnz) ->
-            let* v = apply1 eval (s, cond) in
-            let* x = apply1 getInt v in
-            M.branch [
-              (function () ->
-                let* _ = apply1 isZero x in
-                apply1 eval (s, ifz)) ;
-              (function () ->
-                let* _ = apply1 isNotZero x in
-                apply1 eval (s, ifnz))]
-        | _ -> M.fail ""
-        end)]
+    begin match t with
+    | Lam (x, body) -> apply1 mkClos (x, body, s)
+    | Var v -> apply1 getEnv (v, s)
+    | App (t1, t2) ->
+        let* f = apply1 eval (s, t1) in
+        let* (x, body, env) = apply1 getClos f in
+        let* v = apply1 eval (s, t2) in
+        let* nenv = apply1 extEnv (env, x, v) in
+        apply1 eval (nenv, body)
+    | Const n ->
+        let* x = apply1 intOfLit n in
+        apply1 mkInt x
+    | Plus (t1, t2) ->
+        let* v1 = apply1 eval (s, t1) in
+        let* x1 = apply1 getInt v1 in
+        let* v2 = apply1 eval (s, t2) in
+        let* x2 = apply1 getInt v2 in
+        let* x = apply1 plus (x1, x2) in
+        apply1 mkInt x
+    | IfZero (cond, ifz, ifnz) ->
+        let* v = apply1 eval (s, cond) in
+        let* x = apply1 getInt v in
+        M.branch [
+          (function () ->
+            let* _ = apply1 isZero x in
+            apply1 eval (s, ifz)) ;
+          (function () ->
+            let* _ = apply1 isNotZero x in
+            apply1 eval (s, ifnz))]
+    end
 end

@@ -123,7 +123,6 @@ module type INTERPRETER = sig
   val eq: vint * vint -> value M.t
   val eval_expr: state * expr -> (value voption) M.t
   val eval_stmt: state * stmt -> (state voption) M.t
-  val failed: 'a voption -> unit M.t
   val isBool: value -> (vbool voption) M.t
   val isFalse: vbool -> unit M.t
   val isInt: value -> (vint voption) M.t
@@ -132,7 +131,6 @@ module type INTERPRETER = sig
   val neg: vbool -> value M.t
   val opt: 'a voption -> (('a -> ('b voption) M.t) -> ('b voption) M.t) M.t
   val read: ident * state -> (value voption) M.t
-  val succeeded: 'a voption -> unit M.t
   val write: ident * state * value -> state M.t
 end
 
@@ -149,158 +147,92 @@ module MakeInterpreter (F: UNSPEC) = struct
 
   let rec eval_expr =
     function (s, e) ->
-    M.branch [
-      (function () ->
-        begin match e with
-        | Const i ->
-            let* v = apply1 litToVal i in
-            M.ret (Some v)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Var x -> apply1 read (x, s)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Plus (t1, t2) ->
-            let* _tmp = apply1 eval_expr (s, t1) in
-            apply2 opt _tmp (function f1 ->
-              let* _tmp = apply1 eval_expr (s, t2) in
-              apply2 opt _tmp (function f2 ->
-                let* _tmp = apply1 isInt f1 in
-                apply2 opt _tmp (function v1 ->
-                  let* _tmp = apply1 isInt f2 in
-                  apply2 opt _tmp (function v2 ->
-                    let* v = apply1 add (v1, v2) in
-                    M.ret (Some v)))))
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Equal (t1, t2) ->
-            let* _tmp = apply1 eval_expr (s, t1) in
-            apply2 opt _tmp (function f1 ->
-              let* _tmp = apply1 eval_expr (s, t2) in
-              apply2 opt _tmp (function f2 ->
-                let* _tmp = apply1 isInt f1 in
-                apply2 opt _tmp (function v1 ->
-                  let* _tmp = apply1 isInt f2 in
-                  apply2 opt _tmp (function v2 ->
-                    let* v = apply1 eq (v1, v2) in
-                    M.ret (Some v)))))
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Not e ->
-            let* _tmp = apply1 eval_expr (s, e) in
-            apply2 opt _tmp (function f ->
-              let* _tmp = apply1 isBool f in
-              apply2 opt _tmp (function v ->
-                let* v' = apply1 neg v in
-                M.ret (Some v')))
-        | _ -> M.fail ""
-        end)]
+    begin match e with
+    | Const i ->
+        let* v = apply1 litToVal i in
+        M.ret (Some v)
+    | Var x -> apply1 read (x, s)
+    | Plus (t1, t2) ->
+        let* _tmp = apply1 eval_expr (s, t1) in
+        apply2 opt _tmp (function f1 ->
+          let* _tmp = apply1 eval_expr (s, t2) in
+          apply2 opt _tmp (function f2 ->
+            let* _tmp = apply1 isInt f1 in
+            apply2 opt _tmp (function v1 ->
+              let* _tmp = apply1 isInt f2 in
+              apply2 opt _tmp (function v2 ->
+                let* v = apply1 add (v1, v2) in
+                M.ret (Some v)))))
+    | Equal (t1, t2) ->
+        let* _tmp = apply1 eval_expr (s, t1) in
+        apply2 opt _tmp (function f1 ->
+          let* _tmp = apply1 eval_expr (s, t2) in
+          apply2 opt _tmp (function f2 ->
+            let* _tmp = apply1 isInt f1 in
+            apply2 opt _tmp (function v1 ->
+              let* _tmp = apply1 isInt f2 in
+              apply2 opt _tmp (function v2 ->
+                let* v = apply1 eq (v1, v2) in
+                M.ret (Some v)))))
+    | Not e ->
+        let* _tmp = apply1 eval_expr (s, e) in
+        apply2 opt _tmp (function f ->
+          let* _tmp = apply1 isBool f in
+          apply2 opt _tmp (function v ->
+            let* v' = apply1 neg v in
+            M.ret (Some v')))
+    end
   and eval_stmt =
     function (s, t) ->
-    M.branch [
-      (function () ->
-        begin match t with
-        | Skip -> M.ret (Some s)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Seq (s1, s2) ->
-            let* _tmp = apply1 eval_stmt (s, s1) in
-            apply2 opt _tmp (function f1 ->
-              apply1 eval_stmt (f1, s2))
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Assign (t1, t2) ->
-            let* _tmp = apply1 eval_expr (s, t2) in
-            apply2 opt _tmp (function f2 ->
-              let* t' = apply1 write (t1, s, f2) in
-              M.ret (Some t'))
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | If (t1, t2, t3) ->
-            let* _tmp = apply1 eval_expr (s, t1) in
-            apply2 opt _tmp (function f1 ->
-              let* _tmp = apply1 isBool f1 in
-              apply2 opt _tmp (function f1' ->
-                M.branch [
-                  (function () ->
-                    let* () = apply1 isTrue f1' in
-                    apply1 eval_stmt (s, t2)) ;
-                  (function () ->
-                    let* () = apply1 isFalse f1' in
-                    apply1 eval_stmt (s, t3))]))
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | While (t1, t2) ->
-            let* _tmp = apply1 eval_expr (s, t1) in
-            apply2 opt _tmp (function f1 ->
-              let* _tmp = apply1 isBool f1 in
-              apply2 opt _tmp (function b ->
-                M.branch [
-                  (function () ->
-                    let* () = apply1 isTrue b in
-                    let* _tmp = apply1 eval_stmt (s, t2) in
-                    apply2 opt _tmp (function s' ->
-                      apply1 eval_stmt (s', While (t1, t2)))) ;
-                  (function () ->
-                    let* () = apply1 isFalse b in
-                    M.ret (Some s))]))
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Try (t1, t2) ->
-            let* s' = apply1 eval_stmt (s, t1) in
+    begin match t with
+    | Skip -> M.ret (Some s)
+    | Seq (s1, s2) ->
+        let* _tmp = apply1 eval_stmt (s, s1) in
+        apply2 opt _tmp (function f1 ->
+          apply1 eval_stmt (f1, s2))
+    | Assign (t1, t2) ->
+        let* _tmp = apply1 eval_expr (s, t2) in
+        apply2 opt _tmp (function f2 ->
+          let* t' = apply1 write (t1, s, f2) in
+          M.ret (Some t'))
+    | If (t1, t2, t3) ->
+        let* _tmp = apply1 eval_expr (s, t1) in
+        apply2 opt _tmp (function f1 ->
+          let* _tmp = apply1 isBool f1 in
+          apply2 opt _tmp (function f1' ->
             M.branch [
               (function () ->
-                let* () = apply1 succeeded s' in
-                M.ret s') ;
+                let* () = apply1 isTrue f1' in
+                apply1 eval_stmt (s, t2)) ;
               (function () ->
-                let* () = apply1 failed s' in
-                apply1 eval_stmt (s, t2))]
-        | _ -> M.fail ""
-        end)]
-  and failed: 'a. 'a voption -> unit M.t  =
-    function | None ->
-    M.ret ()
-    
-    | _ ->
-    M.fail ""
-    
+                let* () = apply1 isFalse f1' in
+                apply1 eval_stmt (s, t3))]))
+    | While (t1, t2) ->
+        let* _tmp = apply1 eval_expr (s, t1) in
+        apply2 opt _tmp (function f1 ->
+          let* _tmp = apply1 isBool f1 in
+          apply2 opt _tmp (function b ->
+            M.branch [
+              (function () ->
+                let* () = apply1 isTrue b in
+                let* _tmp = apply1 eval_stmt (s, t2) in
+                apply2 opt _tmp (function s' ->
+                  apply1 eval_stmt (s', While (t1, t2)))) ;
+              (function () ->
+                let* () = apply1 isFalse b in
+                M.ret (Some s))]))
+    | Try (t1, t2) ->
+        let* s' = apply1 eval_stmt (s, t1) in
+        begin match s' with
+        | Some _ -> M.ret s'
+        | None -> apply1 eval_stmt (s, t2)
+        end
+    end
   and opt: 'a 'b. 'a voption -> (('a -> ('b voption) M.t) -> ('b voption) M.t) M.t  =
     function o ->
     M.ret (function f ->
-      M.branch [
-        (function () ->
-          begin match o with
-          | None -> M.ret None
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match o with
-          | Some a -> apply1 f a
-          | _ -> M.fail ""
-          end)])
-  and succeeded: 'a. 'a voption -> unit M.t  =
-    function | (Some _) ->
-    M.ret ()
-    
-    | _ ->
-    M.fail ""
-    
+      begin match o with
+      | None -> M.ret None
+      | Some a -> apply1 f a
+      end)
 end

@@ -144,155 +144,96 @@ module MakeInterpreter (F: UNSPEC) = struct
         let* (a, s) = apply1 a s in
         apply2 f a s))
   and eval_expr e =
-    M.branch [
-      (function () ->
-        begin match e with
-        | Const i ->
-            let* v = apply1 litToVal i in
-            apply1 ret v
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Var x -> apply1 read x
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Plus (t1, t2) ->
-            let* _tmp = apply1 eval_expr t1 in
-            apply2 bind _tmp (function f1 ->
-              begin match f1 with
-              | Int f1' ->
-                  let* _tmp = apply1 eval_expr t2 in
-                  apply2 bind _tmp (function f2 ->
-                    begin match f2 with
-                    | Int f2' ->
-                        let* v = apply1 add (f1', f2') in
-                        let r = Int v in
-                        apply1 ret r
-                    | _ -> M.fail ""
-                    end)
-              | _ -> M.fail ""
-              end)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Equal (t1, t2) ->
-            let* _tmp = apply1 eval_expr t1 in
-            apply2 bind _tmp (function f1 ->
-              begin match f1 with
-              | Int f1' ->
-                  let* _tmp = apply1 eval_expr t2 in
-                  apply2 bind _tmp (function f2 ->
-                    begin match f2 with
-                    | Int f2' ->
-                        let* v = apply1 eq (f1', f2') in
-                        let r = Bool v in
-                        apply1 ret r
-                    | _ -> M.fail ""
-                    end)
-              | _ -> M.fail ""
-              end)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Not t ->
-            let* _tmp = apply1 eval_expr t in
-            apply2 bind _tmp (function f1 ->
-              begin match f1 with
-              | Bool f1' ->
-                  let* v = apply1 neg f1' in
-                  let r = Bool v in
-                  apply1 ret r
-              | _ -> M.fail ""
-              end)
-        | _ -> M.fail ""
-        end)]
+    begin match e with
+    | Const i ->
+        let* v = apply1 litToVal i in
+        apply1 ret v
+    | Var x -> apply1 read x
+    | Plus (t1, t2) ->
+        let* _tmp = apply1 eval_expr t1 in
+        apply2 bind _tmp (function f1 ->
+          begin match f1 with
+          | Int f1' ->
+              let* _tmp = apply1 eval_expr t2 in
+              apply2 bind _tmp (function f2 ->
+                begin match f2 with
+                | Int f2' ->
+                    let* v = apply1 add (f1', f2') in
+                    let r = Int v in
+                    apply1 ret r
+                | _ -> M.fail ""
+                end)
+          | _ -> M.fail ""
+          end)
+    | Equal (t1, t2) ->
+        let* _tmp = apply1 eval_expr t1 in
+        apply2 bind _tmp (function f1 ->
+          begin match f1 with
+          | Int f1' ->
+              let* _tmp = apply1 eval_expr t2 in
+              apply2 bind _tmp (function f2 ->
+                begin match f2 with
+                | Int f2' ->
+                    let* v = apply1 eq (f1', f2') in
+                    let r = Bool v in
+                    apply1 ret r
+                | _ -> M.fail ""
+                end)
+          | _ -> M.fail ""
+          end)
+    | Not t ->
+        let* _tmp = apply1 eval_expr t in
+        apply2 bind _tmp (function f1 ->
+          begin match f1 with
+          | Bool f1' ->
+              let* v = apply1 neg f1' in
+              let r = Bool v in
+              apply1 ret r
+          | _ -> M.fail ""
+          end)
+    end
   and eval_stmt t =
-    M.branch [
-      (function () ->
-        begin match t with
-        | Skip -> apply1 ret ()
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Assign (t1, t2) ->
-            let* _tmp = apply1 eval_expr t2 in
-            apply2 bind _tmp (function f2 ->
-              apply1 write (t1, f2))
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Seq (t1, t2) ->
-            let* _tmp = apply1 eval_stmt t1 in
-            apply2 bind _tmp (function _ ->
-              apply1 eval_stmt t2)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | If (t1, t2, t3) ->
-            let* _tmp = apply1 eval_expr t1 in
-            apply2 bind _tmp (function f1 ->
-              begin match f1 with
-              | Bool f1' ->
-                  M.branch [
-                    (function () ->
-                      begin match f1' with
-                      | True -> apply1 eval_stmt t2
-                      | _ -> M.fail ""
-                      end) ;
-                    (function () ->
-                      begin match f1' with
-                      | False -> apply1 eval_stmt t3
-                      | _ -> M.fail ""
-                      end)]
-              | _ -> M.fail ""
-              end)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | While (t1, t2) ->
-            let* _tmp = apply1 eval_expr t1 in
-            apply2 bind _tmp (function f1 ->
-              begin match f1 with
-              | Bool f1' ->
-                  M.branch [
-                    (function () ->
-                      begin match f1' with
-                      | True ->
-                          let* _tmp = apply1 eval_stmt t2 in
-                          apply2 bind _tmp (function _ ->
-                            apply1 eval_stmt (While (t1, t2)))
-                      | _ -> M.fail ""
-                      end) ;
-                    (function () ->
-                      begin match f1' with
-                      | False -> apply1 ret ()
-                      | _ -> M.fail ""
-                      end)]
-              | _ -> M.fail ""
-              end)
-        | _ -> M.fail ""
-        end)]
+    begin match t with
+    | Skip -> apply1 ret ()
+    | Assign (t1, t2) ->
+        let* _tmp = apply1 eval_expr t2 in
+        apply2 bind _tmp (function f2 ->
+          apply1 write (t1, f2))
+    | Seq (t1, t2) ->
+        let* _tmp = apply1 eval_stmt t1 in
+        apply2 bind _tmp (function _ ->
+          apply1 eval_stmt t2)
+    | If (t1, t2, t3) ->
+        let* _tmp = apply1 eval_expr t1 in
+        apply2 bind _tmp (function f1 ->
+          begin match f1 with
+          | Bool f1' ->
+              begin match f1' with
+              | True -> apply1 eval_stmt t2
+              | False -> apply1 eval_stmt t3
+              end
+          | _ -> M.fail ""
+          end)
+    | While (t1, t2) ->
+        let* _tmp = apply1 eval_expr t1 in
+        apply2 bind _tmp (function f1 ->
+          begin match f1 with
+          | Bool f1' ->
+              begin match f1' with
+              | True ->
+                  let* _tmp = apply1 eval_stmt t2 in
+                  apply2 bind _tmp (function _ ->
+                    apply1 eval_stmt (While (t1, t2)))
+              | False -> apply1 ret ()
+              end
+          | _ -> M.fail ""
+          end)
+    end
   and neg b =
-    M.branch [
-      (function () ->
-        begin match b with
-        | True -> M.ret False
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match b with
-        | False -> M.ret True
-        | _ -> M.fail ""
-        end)]
+    begin match b with
+    | True -> M.ret False
+    | False -> M.ret True
+    end
   and ret: 'a. 'a -> ('a st) M.t  =
     function a ->
     M.ret (function s ->

@@ -155,101 +155,59 @@ module MakeInterpreter (F: UNSPEC) = struct
     
   and eval_expr =
     function (s, e) ->
-    M.branch [
-      (function () ->
-        begin match e with
-        | Const i -> apply1 litToVal i
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Var x -> apply1 read (x, s)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Plus (t1, t2) ->
-            let* f1 = apply1 eval_expr (s, t1) in
-            let* f1' = apply1 isInt f1 in
-            let* f2 = apply1 eval_expr (s, t2) in
-            let* f2' = apply1 isInt f2 in
-            apply1 add (f1', f2')
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Equal (t1, t2) ->
-            let* f1 = apply1 eval_expr (s, t1) in
-            let* f1' = apply1 isInt f1 in
-            let* f2 = apply1 eval_expr (s, t2) in
-            let* f2' = apply1 isInt f2 in
-            apply1 eq (f1', f2')
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Amb l ->
-            let* x = apply1 amb l in
-            apply1 eval_expr (s, x)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match e with
-        | Not t ->
-            let* f1 = apply1 eval_expr (s, t) in
-            let* f1' = apply1 isBool f1 in
-            apply1 neg f1'
-        | _ -> M.fail ""
-        end)]
+    begin match e with
+    | Const i -> apply1 litToVal i
+    | Var x -> apply1 read (x, s)
+    | Plus (t1, t2) ->
+        let* f1 = apply1 eval_expr (s, t1) in
+        let* f1' = apply1 isInt f1 in
+        let* f2 = apply1 eval_expr (s, t2) in
+        let* f2' = apply1 isInt f2 in
+        apply1 add (f1', f2')
+    | Equal (t1, t2) ->
+        let* f1 = apply1 eval_expr (s, t1) in
+        let* f1' = apply1 isInt f1 in
+        let* f2 = apply1 eval_expr (s, t2) in
+        let* f2' = apply1 isInt f2 in
+        apply1 eq (f1', f2')
+    | Amb l ->
+        let* x = apply1 amb l in
+        apply1 eval_expr (s, x)
+    | Not t ->
+        let* f1 = apply1 eval_expr (s, t) in
+        let* f1' = apply1 isBool f1 in
+        apply1 neg f1'
+    end
   and eval_stmt =
     function (s, t) ->
-    M.branch [
-      (function () ->
-        begin match t with
-        | Skip -> M.ret s
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Assign (t1, t2) ->
-            let* f2 = apply1 eval_expr (s, t2) in
-            apply1 write (t1, s, f2)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | Seq (t1, t2) ->
-            let* f1 = apply1 eval_stmt (s, t1) in
-            apply1 eval_stmt (f1, t2)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | If (t1, t2, t3) ->
-            let* f1 = apply1 eval_expr (s, t1) in
-            let* f1' = apply1 isBool f1 in
-            M.branch [
-              (function () ->
-                let* _ = apply1 isTrue f1' in
-                apply1 eval_stmt (s, t2)) ;
-              (function () ->
-                let* _ = apply1 isFalse f1' in
-                apply1 eval_stmt (s, t3))]
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match t with
-        | While (t1, t2) ->
-            let* f1 = apply1 eval_expr (s, t1) in
-            let* f1' = apply1 isBool f1 in
-            M.branch [
-              (function () ->
-                let* _ = apply1 isTrue f1' in
-                let* f2 = apply1 eval_stmt (s, t2) in
-                apply1 eval_stmt (f2, While (t1, t2))) ;
-              (function () ->
-                let* _ = apply1 isFalse f1' in
-                M.ret s)]
-        | _ -> M.fail ""
-        end)]
+    begin match t with
+    | Skip -> M.ret s
+    | Assign (t1, t2) ->
+        let* f2 = apply1 eval_expr (s, t2) in
+        apply1 write (t1, s, f2)
+    | Seq (t1, t2) ->
+        let* f1 = apply1 eval_stmt (s, t1) in
+        apply1 eval_stmt (f1, t2)
+    | If (t1, t2, t3) ->
+        let* f1 = apply1 eval_expr (s, t1) in
+        let* f1' = apply1 isBool f1 in
+        M.branch [
+          (function () ->
+            let* _ = apply1 isTrue f1' in
+            apply1 eval_stmt (s, t2)) ;
+          (function () ->
+            let* _ = apply1 isFalse f1' in
+            apply1 eval_stmt (s, t3))]
+    | While (t1, t2) ->
+        let* f1 = apply1 eval_expr (s, t1) in
+        let* f1' = apply1 isBool f1 in
+        M.branch [
+          (function () ->
+            let* _ = apply1 isTrue f1' in
+            let* f2 = apply1 eval_stmt (s, t2) in
+            apply1 eval_stmt (f2, While (t1, t2))) ;
+          (function () ->
+            let* _ = apply1 isFalse f1' in
+            M.ret s)]
+    end
 end

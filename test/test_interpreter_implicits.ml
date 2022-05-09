@@ -1,15 +1,11 @@
 open Implicits
 
-module T = struct
+module rec T: sig
   type ident = string
   type lit = int
-  type vbool = bool
   type vint = int
-  type value =
-	| Int of vint
-	| Bool of vbool
-  type state = (ident, value) Hashtbl.t
-end
+  type state = (ident, Unspec(Monads.ID)(T).value) Hashtbl.t
+end = T
 
 module NewFlow = struct
 	include T
@@ -28,8 +24,7 @@ module NewFlow = struct
     | Bool b -> b
     | _ -> M.fail "Is not a bool"
   let add (a, b) = (a + b)
-  let eq (a, b) = assert_necro (a = b)
-  let neq (a, b) = assert_necro (a <> b)
+  let eq (a, b) = if (a = b) then True else False
   let isTrue b = assert_necro(b)
   let isFalse b = assert_necro(not b)
   let false' = false
@@ -69,12 +64,12 @@ let () =
   let t =
     Equal (Const 0, Not (Const 18)) in
   let s = eval_expr (initial_state ()) t in
-  assert (s = Bool true)
+  assert (s = Bool True)
 
 let () =
   let t =
     Equal (Const 1, Not (Equal (Const 42, Const 18))) in
   let s = eval_expr (initial_state ()) t in
-  assert (s = Bool true)
+  assert (s = Bool True)
 
 

@@ -150,190 +150,99 @@ module MakeInterpreter (F: UNSPEC) = struct
   let rec append: 'a. 'a vlist -> ('a vlist -> ('a vlist) M.t) M.t  =
     function l1 ->
     M.ret (function l2 ->
-      M.branch [
-        (function () ->
-          begin match l1 with
-          | VNil -> M.ret l2
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l1 with
-          | VCons (x, q) ->
-              let* l' = apply2 append q l2 in
-              M.ret (VCons (x, l'))
-          | _ -> M.fail ""
-          end)])
+      begin match l1 with
+      | VNil -> M.ret l2
+      | VCons (x, q) ->
+          let* l' = apply2 append q l2 in
+          M.ret (VCons (x, l'))
+      end)
   and eval_expr s =
     M.ret (function e ->
-      M.branch [
-        (function () ->
-          begin match e with
-          | Const i -> apply1 litToVal i
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match e with
-          | Var x -> apply1 read (x, s)
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match e with
-          | Plus (t1, t2) ->
-              let* f1 = apply2 eval_expr s t1 in
-              let* f1' = apply1 isInt f1 in
-              let* f2 = apply2 eval_expr s t2 in
-              let* f2' = apply1 isInt f2 in
-              apply2 add f1' f2'
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match e with
-          | Equal (t1, t2) ->
-              let* f1 = apply2 eval_expr s t1 in
-              let* f1' = apply1 isInt f1 in
-              let* f2 = apply2 eval_expr s t2 in
-              let* f2' = apply1 isInt f2 in
-              apply2 eq f1' f2'
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match e with
-          | Not t ->
-              let* f1 = apply2 eval_expr s t in
-              let* f1' = apply1 isBool f1 in
-              apply1 neg f1'
-          | _ -> M.fail ""
-          end)])
+      begin match e with
+      | Const i -> apply1 litToVal i
+      | Var x -> apply1 read (x, s)
+      | Plus (t1, t2) ->
+          let* f1 = apply2 eval_expr s t1 in
+          let* f1' = apply1 isInt f1 in
+          let* f2 = apply2 eval_expr s t2 in
+          let* f2' = apply1 isInt f2 in
+          apply2 add f1' f2'
+      | Equal (t1, t2) ->
+          let* f1 = apply2 eval_expr s t1 in
+          let* f1' = apply1 isInt f1 in
+          let* f2 = apply2 eval_expr s t2 in
+          let* f2' = apply1 isInt f2 in
+          apply2 eq f1' f2'
+      | Not t ->
+          let* f1 = apply2 eval_expr s t in
+          let* f1' = apply1 isBool f1 in
+          apply1 neg f1'
+      end)
   and eval_stmt s =
     M.ret (function t ->
-      M.branch [
-        (function () ->
-          begin match t with
-          | Skip -> M.ret s
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | Assign (t1, t2) ->
-              let* f2 = apply2 eval_expr s t2 in
-              apply1 write (t1, s, f2)
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | Seq (t1, t2) ->
-              let* f1 = apply2 eval_stmt s t1 in
-              apply2 eval_stmt f1 t2
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | If (t1, t2, t3) ->
-              let* f1 = apply2 eval_expr s t1 in
-              let* f1' = apply1 isBool f1 in
-              M.branch [
-                (function () ->
-                  let* _ = apply1 isTrue f1' in
-                  apply2 eval_stmt s t2) ;
-                (function () ->
-                  let* _ = apply1 isFalse f1' in
-                  apply2 eval_stmt s t3)]
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | While (t1, t2) ->
-              let* f1 = apply2 eval_expr s t1 in
-              let* f1' = apply1 isBool f1 in
-              M.branch [
-                (function () ->
-                  let* _ = apply1 isTrue f1' in
-                  let* f2 = apply2 eval_stmt s t2 in
-                  apply2 eval_stmt f2 (While (t1, t2))) ;
-                (function () ->
-                  let* _ = apply1 isFalse f1' in
-                  M.ret s)]
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | Parallel (Skip, Skip) -> M.ret s
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | Parallel (t1, t2) ->
-              M.branch [
-                (function () ->
-                  let* _tmp = apply1 flatten t1 in
-                  begin match _tmp with
-                  | VCons (x1, q1) ->
-                      let* t'1 = apply1 unflatten q1 in
-                      apply2 eval_stmt s (Seq (x1, Parallel (t'1, t2)))
-                  | _ -> M.fail ""
-                  end) ;
-                (function () ->
-                  let* _tmp = apply1 flatten t2 in
-                  begin match _tmp with
-                  | VCons (x2, q2) ->
-                      let* t'2 = apply1 unflatten q2 in
-                      apply2 eval_stmt s (Seq (x2, Parallel (t1, t'2)))
-                  | _ -> M.fail ""
-                  end)]
-          | _ -> M.fail ""
-          end)])
-  and flatten s =
-    M.branch [
-      (function () ->
-        begin match s with
-        | Skip -> M.ret VNil
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        let* _ =
+      begin match t with
+      | Skip -> M.ret s
+      | Assign (t1, t2) ->
+          let* f2 = apply2 eval_expr s t2 in
+          apply1 write (t1, s, f2)
+      | Seq (t1, t2) ->
+          let* f1 = apply2 eval_stmt s t1 in
+          apply2 eval_stmt f1 t2
+      | If (t1, t2, t3) ->
+          let* f1 = apply2 eval_expr s t1 in
+          let* f1' = apply1 isBool f1 in
           M.branch [
             (function () ->
-              begin match s with
-              | Assign _ -> M.ret ()
+              let* _ = apply1 isTrue f1' in
+              apply2 eval_stmt s t2) ;
+            (function () ->
+              let* _ = apply1 isFalse f1' in
+              apply2 eval_stmt s t3)]
+      | While (t1, t2) ->
+          let* f1 = apply2 eval_expr s t1 in
+          let* f1' = apply1 isBool f1 in
+          M.branch [
+            (function () ->
+              let* _ = apply1 isTrue f1' in
+              let* f2 = apply2 eval_stmt s t2 in
+              apply2 eval_stmt f2 (While (t1, t2))) ;
+            (function () ->
+              let* _ = apply1 isFalse f1' in
+              M.ret s)]
+      | Parallel (Skip, Skip) -> M.ret s
+      | Parallel (t1, t2) ->
+          M.branch [
+            (function () ->
+              let* _tmp = apply1 flatten t1 in
+              begin match _tmp with
+              | VCons (x1, q1) ->
+                  let* t'1 = apply1 unflatten q1 in
+                  apply2 eval_stmt s (Seq (x1, Parallel (t'1, t2)))
               | _ -> M.fail ""
               end) ;
             (function () ->
-              begin match s with
-              | While _ -> M.ret ()
-              | _ -> M.fail ""
-              end) ;
-            (function () ->
-              begin match s with
-              | Parallel _ -> M.ret ()
-              | _ -> M.fail ""
-              end) ;
-            (function () ->
-              begin match s with
-              | If _ -> M.ret ()
+              let* _tmp = apply1 flatten t2 in
+              begin match _tmp with
+              | VCons (x2, q2) ->
+                  let* t'2 = apply1 unflatten q2 in
+                  apply2 eval_stmt s (Seq (x2, Parallel (t1, t'2)))
               | _ -> M.fail ""
               end)]
-        in
-        M.ret (VCons (s, VNil))) ;
-      (function () ->
-        begin match s with
-        | Seq (s1, s2) ->
-            let* l1 = apply1 flatten s1 in
-            let* l2 = apply1 flatten s2 in
-            apply2 append l1 l2
-        | _ -> M.fail ""
-        end)]
+      end)
+  and flatten s =
+    begin match s with
+    | Skip -> M.ret VNil
+    | Seq (s1, s2) ->
+        let* l1 = apply1 flatten s1 in
+        let* l2 = apply1 flatten s2 in
+        apply2 append l1 l2
+    | _ -> M.ret (VCons (s, VNil))
+    end
   and unflatten x =
-    M.branch [
-      (function () ->
-        begin match x with
-        | VNil -> M.ret Skip
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match x with
-        | VCons (x, q) ->
-            let* t2 = apply1 unflatten q in
-            M.ret (Seq (x, t2))
-        | _ -> M.fail ""
-        end)]
+    begin match x with
+    | VNil -> M.ret Skip
+    | VCons (x, q) ->
+        let* t2 = apply1 unflatten q in
+        M.ret (Seq (x, t2))
+    end
 end

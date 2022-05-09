@@ -135,17 +135,12 @@ module MakeInterpreter (F: UNSPEC) = struct
 
   let rec add' x =
     M.ret (function y ->
-      M.branch [
-        (function () ->
-          begin match y with
-          | Zero -> M.ret x
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match y with
-          | Succ y' -> apply2 add' x y'
-          | _ -> M.fail ""
-          end)])
+      begin match y with
+      | Zero -> M.ret x
+      | Succ y' ->
+          let* n = apply2 add' x y' in
+          M.ret (Succ n)
+      end)
   and add'' e =
     let {re = re1; im = im1} = fst e in
     let {re = re2; im = im2} = snd e in

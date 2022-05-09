@@ -6,8 +6,6 @@ module type TYPES = sig
   type ident
   type lit
   type state
-  type value
-  type vbool
   type vint
 end
 
@@ -27,7 +25,13 @@ module type UNSPEC = sig
   module M: MONAD
   include TYPES
 
-  type stmt =
+  type vbool =
+  | True
+  | False
+  and value =
+  | Int of vint
+  | Bool of vbool
+  and stmt =
   | While of (expr * stmt)
   | Skip
   | Seq of (stmt * stmt)
@@ -41,19 +45,10 @@ module type UNSPEC = sig
   | Const of lit
 
   val add: vint * vint -> vint M.t
-  val eq: vint * vint -> unit M.t
-  val false': vbool
-  val isBool: value -> vbool M.t
-  val isFalse: vbool -> unit M.t
-  val isInt: value -> vint M.t
-  val isTrue: vbool -> unit M.t
+  val eq: vint * vint -> vbool M.t
   val litToVal: lit -> value M.t
-  val mkBool: vbool -> value M.t
-  val mkInt: vint -> value M.t
-  val neq: vint * vint -> unit M.t
   val one: vint
   val read: ident * state -> value M.t
-  val true': vbool
   val write: ident * state * value -> state M.t
   val zero: vint
 end
@@ -64,7 +59,13 @@ module Unspec (M: MONAD) (T: TYPES) = struct
   include T
   module M = M
 
-  type stmt =
+  type vbool =
+  | True
+  | False
+  and value =
+  | Int of vint
+  | Bool of vbool
+  and stmt =
   | While of (expr * stmt)
   | Skip
   | Seq of (stmt * stmt)
@@ -79,14 +80,7 @@ module Unspec (M: MONAD) (T: TYPES) = struct
 
   let add _ = raise (NotImplemented "add")
   let eq _ = raise (NotImplemented "eq")
-  let isBool _ = raise (NotImplemented "isBool")
-  let isFalse _ = raise (NotImplemented "isFalse")
-  let isInt _ = raise (NotImplemented "isInt")
-  let isTrue _ = raise (NotImplemented "isTrue")
   let litToVal _ = raise (NotImplemented "litToVal")
-  let mkBool _ = raise (NotImplemented "mkBool")
-  let mkInt _ = raise (NotImplemented "mkInt")
-  let neq _ = raise (NotImplemented "neq")
   let read _ = raise (NotImplemented "read")
   let write _ = raise (NotImplemented "write")
 end
@@ -98,11 +92,15 @@ module type INTERPRETER = sig
   type ident
   type lit
   type state
-  type value
-  type vbool
   type vint
 
-  type stmt =
+  type vbool =
+  | True
+  | False
+  and value =
+  | Int of vint
+  | Bool of vbool
+  and stmt =
   | While of (expr * stmt)
   | Skip
   | Seq of (stmt * stmt)
@@ -116,25 +114,16 @@ module type INTERPRETER = sig
   | Const of lit
 
   val add: vint * vint -> vint M.t
-  val eq: vint * vint -> unit M.t
+  val eq: vint * vint -> vbool M.t
   val eqBoolean: vbool -> (vbool -> vbool M.t) M.t
   val eval_expr: state -> (expr -> value M.t) M.t
   val eval_stmt: state -> (stmt -> state M.t) M.t
-  val false': vbool
-  val isBool: value -> vbool M.t
-  val isFalse: vbool -> unit M.t
-  val isInt: value -> vint M.t
-  val isTrue: vbool -> unit M.t
   val litToVal: lit -> value M.t
-  val mkBool: vbool -> value M.t
-  val mkInt: vint -> value M.t
   val neg: vbool -> vbool M.t
-  val neq: vint * vint -> unit M.t
   val one: vint
   val read: ident * state -> value M.t
   val toBoolean: value -> vbool M.t
   val toInteger: value -> vint M.t
-  val true': vbool
   val write: ident * state * value -> state M.t
   val zero: vint
 end
@@ -152,166 +141,88 @@ module MakeInterpreter (F: UNSPEC) = struct
 
   let rec eqBoolean b1 =
     M.ret (function b2 ->
-      M.branch [
-        (function () ->
-          let* _ = apply1 isTrue b1 in
-          M.ret b2) ;
-        (function () ->
-          let* _ = apply1 isFalse b1 in
-          apply1 neg b2)])
+      begin match b1 with
+      | True -> M.ret b2
+      | False -> apply1 neg b2
+      end)
   and eval_expr s =
     M.ret (function e ->
-      M.branch [
-        (function () ->
-          begin match e with
-          | Const i -> apply1 litToVal i
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match e with
-          | Var x -> apply1 read (x, s)
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match e with
-          | Plus (t1, t2) ->
-              let* v1 = apply2 eval_expr s t1 in
-              let* v1 = apply1 toInteger v1 in
-              let* v2 = apply2 eval_expr s t2 in
-              let* v2 = apply1 toInteger v2 in
-              let* v3 = apply1 add (v1, v2) in
-              apply1 mkInt v3
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match e with
-          | Equal (t1, t2) ->
-              let* v1 = apply2 eval_expr s t1 in
-              let* v2 = apply2 eval_expr s t2 in
-              let* b =
-                M.branch [
-                  (function () ->
-                    let* b1 = apply1 isBool v1 in
-                    let* b2 = apply1 isBool v2 in
-                    apply2 eqBoolean b1 b2) ;
-                  (function () ->
-                    let* (i1, i2) =
-                      M.branch [
-                        (function () ->
-                          let* i1 = apply1 isInt v1 in
-                          let* i2 = apply1 toInteger v2 in
-                          M.ret (i1, i2)) ;
-                        (function () ->
-                          let* i1 = apply1 toInteger v1 in
-                          let* i2 = apply1 isInt v2 in
-                          M.ret (i1, i2))]
-                    in
-                    M.branch [
-                      (function () ->
-                        let* _ = apply1 eq (i1, i2) in
-                        M.ret true') ;
-                      (function () ->
-                        let* _ = apply1 neq (i1, i2) in
-                        M.ret false')])]
-              in
-              apply1 mkBool b
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match e with
-          | Not t ->
-              let* v = apply2 eval_expr s t in
-              let* b = apply1 toBoolean v in
-              let* n = apply1 neg b in
-              apply1 mkBool n
-          | _ -> M.fail ""
-          end)])
+      begin match e with
+      | Const i -> apply1 litToVal i
+      | Var x -> apply1 read (x, s)
+      | Plus (t1, t2) ->
+          let* v1 = apply2 eval_expr s t1 in
+          let* v1 = apply1 toInteger v1 in
+          let* v2 = apply2 eval_expr s t2 in
+          let* v2 = apply1 toInteger v2 in
+          let* v3 = apply1 add (v1, v2) in
+          M.ret (Int v3)
+      | Equal (t1, t2) ->
+          let* v1 = apply2 eval_expr s t1 in
+          let* v2 = apply2 eval_expr s t2 in
+          let* b =
+            begin match (v1, v2) with
+            | (Bool b1, Bool b2) -> apply2 eqBoolean b1 b2
+            | _ ->
+                let* i1 = apply1 toInteger v1 in
+                let* i2 = apply1 toInteger v2 in
+                apply1 eq (i1, i2)
+            end
+          in
+          M.ret (Bool b)
+      | Not t ->
+          let* v = apply2 eval_expr s t in
+          let* b = apply1 toBoolean v in
+          let* n = apply1 neg b in
+          M.ret (Bool n)
+      end)
   and eval_stmt s =
     M.ret (function t ->
-      M.branch [
-        (function () ->
-          begin match t with
-          | Skip -> M.ret s
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | Assign (x, e) ->
-              let* v = apply2 eval_expr s e in
-              apply1 write (x, s, v)
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | Seq (t1, t2) ->
-              let* s = apply2 eval_stmt s t1 in
-              apply2 eval_stmt s t2
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | If (e, t1, t2) ->
-              let* v = apply2 eval_expr s e in
-              let* b = apply1 toBoolean v in
-              M.branch [
-                (function () ->
-                  let* _ = apply1 isTrue b in
-                  apply2 eval_stmt s t1) ;
-                (function () ->
-                  let* _ = apply1 isFalse b in
-                  apply2 eval_stmt s t2)]
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match t with
-          | While (e, t) ->
-              let* v = apply2 eval_expr s e in
-              let* b = apply1 toBoolean v in
-              M.branch [
-                (function () ->
-                  let* _ = apply1 isTrue b in
-                  let* s = apply2 eval_stmt s t in
-                  apply2 eval_stmt s t) ;
-                (function () ->
-                  let* _ = apply1 isFalse b in
-                  M.ret s)]
-          | _ -> M.fail ""
-          end)])
+      begin match t with
+      | Skip -> M.ret s
+      | Assign (x, e) ->
+          let* v = apply2 eval_expr s e in
+          apply1 write (x, s, v)
+      | Seq (t1, t2) ->
+          let* s = apply2 eval_stmt s t1 in
+          apply2 eval_stmt s t2
+      | If (e, t1, t2) ->
+          let* v = apply2 eval_expr s e in
+          let* b = apply1 toBoolean v in
+          begin match b with
+          | True -> apply2 eval_stmt s t1
+          | False -> apply2 eval_stmt s t2
+          end
+      | While (e, t) ->
+          let* v = apply2 eval_expr s e in
+          let* b = apply1 toBoolean v in
+          begin match b with
+          | True ->
+              let* s = apply2 eval_stmt s t in
+              apply2 eval_stmt s t
+          | False -> M.ret s
+          end
+      end)
   and neg b =
-    M.branch [
-      (function () ->
-        let* _ = apply1 isTrue b in
-        M.ret false') ;
-      (function () ->
-        let* _ = apply1 isFalse b in
-        M.ret true')]
+    begin match b with
+    | True -> M.ret False
+    | False -> M.ret True
+    end
   and toBoolean v =
-    M.branch [
-      (function () ->
-        let* b = apply1 isBool v in
-        M.ret b) ;
-      (function () ->
-        let* i = apply1 isInt v in
+    begin match v with
+    | Bool b -> M.ret b
+    | Int i ->
         let z = zero in
-        M.branch [
-          (function () ->
-            let* _ = apply1 eq (i, z) in
-            M.ret false') ;
-          (function () ->
-            let* _ = apply1 neq (i, z) in
-            M.ret true')])]
+        let* b = apply1 eq (i, z) in
+        begin match b with
+        | True -> M.ret False
+        | False -> M.ret True
+        end
+    end
   and toInteger v =
-    M.branch [
-      (function () ->
-        let* i = apply1 isInt v in
-        M.ret i) ;
-      (function () ->
-        let* b = apply1 isBool v in
-        M.branch [
-          (function () ->
-            let* _ = apply1 isTrue b in
-            M.ret one) ;
-          (function () ->
-            let* _ = apply1 isFalse b in
-            M.ret zero)])]
+    begin match v with
+    | Int i -> M.ret i
+    | Bool True -> M.ret one
+    | Bool False -> M.ret zero
+    end
 end

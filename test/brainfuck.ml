@@ -97,7 +97,8 @@ module type INTERPRETER = sig
   and ascii =
   | Ascii of (bit * bit * bit * bit * bit * bit * bit)
 
-  val addbit: bit * bit -> (bit * bit) M.t
+  (** Return carry and result *)
+  val addbit: bit -> (bit -> (bit * bit) M.t) M.t
   val bind: (state -> ('a * state) M.t) -> (('a -> (state -> ('b * state) M.t) M.t) -> (state -> ('b * state) M.t) M.t) M.t
   val decr: state -> (unit * state) M.t
   val decr_ascii: ascii -> ascii M.t
@@ -108,12 +109,12 @@ module type INTERPRETER = sig
   val incr: state -> (unit * state) M.t
   val incr_ascii: ascii -> ascii M.t
   val input: unit -> ascii M.t
-  val isNotZero: ascii -> unit M.t
-  val isZero: ascii -> unit M.t
+  val isZero: ascii -> bit M.t
   val output: ascii -> unit M.t
   val ret: 'a -> (state -> ('a * state) M.t) M.t
   val set: ascii -> (state -> (unit * state) M.t) M.t
-  val subbit: bit * bit -> (bit * bit) M.t
+  (** Return carry and result *)
+  val subbit: bit -> (bit -> (bit * bit) M.t) M.t
   val zero: ascii
 end
 
@@ -128,12 +129,14 @@ module MakeInterpreter (F: UNSPEC) = struct
     let* _tmp = apply1 f arg1 in
     apply1 _tmp arg2
 
-  let rec addbit t =
-    begin match t with
-    | (Zero, _) -> M.ret t
-    | (One, Zero) -> M.ret (Zero, One)
-    | (One, One) -> M.ret (One, Zero)
-    end
+  (** Return carry and result *)
+  let rec addbit b1 =
+    M.ret (function b2 ->
+      begin match (b1, b2) with
+      | (Zero, _) -> M.ret (Zero, b2)
+      | (One, Zero) -> M.ret (Zero, One)
+      | (One, One) -> M.ret (One, Zero)
+      end)
   and bind: 'a 'b. (state -> ('a * state) M.t) -> (('a -> (state -> ('b * state) M.t) M.t) -> (state -> ('b * state) M.t) M.t) M.t  =
     function a ->
     M.ret (function f ->
@@ -147,49 +150,51 @@ module MakeInterpreter (F: UNSPEC) = struct
   and decr_ascii =
     function (Ascii (b1, b2, b3, b4, b5, b6, b7)) ->
     let c = One in
-    let* (c, b7) = apply1 subbit (b7, c) in
-    let* (c, b6) = apply1 subbit (b6, c) in
-    let* (c, b5) = apply1 subbit (b5, c) in
-    let* (c, b4) = apply1 subbit (b4, c) in
-    let* (c, b3) = apply1 subbit (b3, c) in
-    let* (c, b2) = apply1 subbit (b2, c) in
-    let* (_, b1) = apply1 subbit (b1, c) in
+    let* (c, b7) = apply2 subbit b7 c in
+    let* (c, b6) = apply2 subbit b6 c in
+    let* (c, b5) = apply2 subbit b5 c in
+    let* (c, b4) = apply2 subbit b4 c in
+    let* (c, b3) = apply2 subbit b3 c in
+    let* (c, b2) = apply2 subbit b2 c in
+    let* (_, b1) = apply2 subbit b1 c in
     M.ret (Ascii (b1, b2, b3, b4, b5, b6, b7))
   and eval o =
     begin match o with
     | Nil -> apply1 ret ()
-    | Cons (Minus, l) ->
-        apply2 bind decr (function _ ->
-          apply1 eval l)
-    | Cons (Plus, l) ->
-        apply2 bind incr (function _ ->
-          apply1 eval l)
-    | Cons (Less, l) ->
-        apply2 bind go_left (function _ ->
-          apply1 eval l)
-    | Cons (Greater, l) ->
-        apply2 bind go_right (function _ ->
-          apply1 eval l)
-    | Cons (In, l) ->
-        let* v = apply1 input () in
-        let* _tmp = apply1 set v in
-        apply2 bind _tmp (function _ ->
-          apply1 eval l)
-    | Cons (Out, l) ->
-        apply2 bind get (function v ->
-          let* () = apply1 output v in
-          apply1 eval l)
-    | Cons (Loop l1, l2) ->
-        apply2 bind get (function v ->
-          M.branch [
-            (function () ->
-              let* () = apply1 isZero v in
-              apply1 eval l2) ;
-            (function () ->
-              let* () = apply1 isNotZero v in
-              let* _tmp = apply1 eval l1 in
-              apply2 bind _tmp (function _ ->
-                apply1 eval (Cons (Loop l1, l2))))])
+    | Cons (op, l) ->
+        begin match op with
+        | Minus ->
+            apply2 bind decr (function _ ->
+              apply1 eval l)
+        | Plus ->
+            apply2 bind incr (function _ ->
+              apply1 eval l)
+        | Less ->
+            apply2 bind go_left (function _ ->
+              apply1 eval l)
+        | Greater ->
+            apply2 bind go_right (function _ ->
+              apply1 eval l)
+        | In ->
+            let* v = apply1 input () in
+            let* _tmp = apply1 set v in
+            apply2 bind _tmp (function _ ->
+              apply1 eval l)
+        | Out ->
+            apply2 bind get (function v ->
+              let* () = apply1 output v in
+              apply1 eval l)
+        | Loop loop ->
+            apply2 bind get (function v ->
+              let* z = apply1 isZero v in
+              begin match z with
+              | One -> apply1 eval l
+              | Zero ->
+                  let* _tmp = apply1 eval loop in
+                  apply2 bind _tmp (function _ ->
+                    apply1 eval o)
+              end)
+        end
     end
   and get =
     function (State (l1, b, l2)) ->
@@ -199,7 +204,7 @@ module MakeInterpreter (F: UNSPEC) = struct
     let* (b', l1') =
       begin match l1 with
       | Nil -> M.ret (zero, Nil)
-      | Cons (x, q) -> M.ret (x, q)
+      | Cons x -> M.ret x
       end
     in
     M.ret ((), State (l1', b', Cons (b, l2)))
@@ -208,7 +213,7 @@ module MakeInterpreter (F: UNSPEC) = struct
     let* (b', l2') =
       begin match l2 with
       | Nil -> M.ret (zero, Nil)
-      | Cons (x, q) -> M.ret (x, q)
+      | Cons x -> M.ret x
       end
     in
     M.ret ((), State (Cons (b, l1), b', l2'))
@@ -219,56 +224,18 @@ module MakeInterpreter (F: UNSPEC) = struct
   and incr_ascii a =
     let Ascii (b1, b2, b3, b4, b5, b6, b7) = a in
     let c = One in
-    let* (c, b7) = apply1 addbit (c, b7) in
-    let* (c, b6) = apply1 addbit (c, b6) in
-    let* (c, b5) = apply1 addbit (c, b5) in
-    let* (c, b4) = apply1 addbit (c, b4) in
-    let* (c, b3) = apply1 addbit (c, b3) in
-    let* (c, b2) = apply1 addbit (c, b2) in
-    let* (_, b1) = apply1 addbit (c, b1) in
+    let* (c, b7) = apply2 addbit c b7 in
+    let* (c, b6) = apply2 addbit c b6 in
+    let* (c, b5) = apply2 addbit c b5 in
+    let* (c, b4) = apply2 addbit c b4 in
+    let* (c, b3) = apply2 addbit c b3 in
+    let* (c, b2) = apply2 addbit c b2 in
+    let* (_, b1) = apply2 addbit c b1 in
     M.ret (Ascii (b1, b2, b3, b4, b5, b6, b7))
-  and isNotZero a =
-    let Ascii (b1, b2, b3, b4, b5, b6, b7) = a in
-    M.branch [
-      (function () ->
-        begin match b1 with
-        | One -> M.ret ()
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match b2 with
-        | One -> M.ret ()
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match b3 with
-        | One -> M.ret ()
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match b4 with
-        | One -> M.ret ()
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match b5 with
-        | One -> M.ret ()
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match b6 with
-        | One -> M.ret ()
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match b7 with
-        | One -> M.ret ()
-        | _ -> M.fail ""
-        end)]
   and isZero a =
     begin match a with
-    | Ascii (Zero, Zero, Zero, Zero, Zero, Zero, Zero) -> M.ret ()
-    | _ -> M.fail ""
+    | Ascii (Zero, Zero, Zero, Zero, Zero, Zero, Zero) -> M.ret One
+    | _ -> M.ret Zero
     end
   and ret: 'a. 'a -> (state -> ('a * state) M.t) M.t  =
     function x ->
@@ -277,11 +244,13 @@ module MakeInterpreter (F: UNSPEC) = struct
   and set b =
     M.ret (function (State (l1, _, l2)) ->
       M.ret ((), State (l1, b, l2)))
-  and subbit t =
-    begin match t with
-    | (b, Zero) -> M.ret (Zero, b)
-    | (One, One) -> M.ret (Zero, Zero)
-    | (Zero, One) -> M.ret (One, One)
-    end
+  (** Return carry and result *)
+  and subbit b1 =
+    M.ret (function b2 ->
+      begin match (b1, b2) with
+      | (b, Zero) -> M.ret (Zero, b)
+      | (One, One) -> M.ret (Zero, Zero)
+      | (Zero, One) -> M.ret (One, One)
+      end)
   and zero = Ascii (Zero, Zero, Zero, Zero, Zero, Zero, Zero)
 end

@@ -150,19 +150,12 @@ module MakeInterpreter (F: UNSPEC) = struct
         end)]
   and add m =
     M.ret (function n ->
-      M.branch [
-        (function () ->
-          begin match n with
-          | O -> M.ret m
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match n with
-          | S n ->
-              let* s = apply2 add m n in
-              M.ret (S s)
-          | _ -> M.fail ""
-          end)])
+      begin match n with
+      | O -> M.ret m
+      | S n ->
+          let* s = apply2 add m n in
+          M.ret (S s)
+      end)
   and addq =
     function (n1, d1) ->
     M.ret (function (n2, d2) ->
@@ -231,17 +224,14 @@ module MakeInterpreter (F: UNSPEC) = struct
     M.ret (function n ->
       begin match n with
       | S n' ->
-          M.branch [
-            (function () ->
-              let* _tmp = apply2 le m n' in
-              begin match _tmp with
-              | True -> M.ret O
-              | _ -> M.fail ""
-              end) ;
-            (function () ->
+          let* cmp = apply2 le m n' in
+          begin match cmp with
+          | True -> M.ret O
+          | False ->
               let* m' = apply2 sub m n in
               let* d = apply2 div m' n in
-              M.ret (S d))]
+              M.ret (S d)
+          end
       | _ -> M.fail ""
       end)
   and divq a =
@@ -274,27 +264,11 @@ module MakeInterpreter (F: UNSPEC) = struct
           end)])
   and eq m =
     M.ret (function n ->
-      M.branch [
-        (function () ->
-          begin match (m, n) with
-          | (O, O) -> M.ret True
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match (m, n) with
-          | (O, S _) -> M.ret False
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match (m, n) with
-          | (S _, O) -> M.ret False
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match (m, n) with
-          | (S m, S n) -> apply2 eq m n
-          | _ -> M.fail ""
-          end)])
+      begin match (m, n) with
+      | (O, O) -> M.ret True
+      | (S m, S n) -> apply2 eq m n
+      | _ -> M.ret False
+      end)
   and eqq q1 =
     M.ret (function q2 ->
       let ((n1, d1), (n2, d2)) = (q1, q2) in
@@ -427,30 +401,11 @@ module MakeInterpreter (F: UNSPEC) = struct
     apply2 eq (S O) den
   and le m =
     M.ret (function n ->
-      M.branch [
-        (function () ->
-          begin match m with
-          | O -> M.ret True
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match m with
-          | S _ ->
-              begin match n with
-              | O -> M.ret False
-              | _ -> M.fail ""
-              end
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match m with
-          | S m ->
-              begin match n with
-              | S n -> apply2 le m n
-              | _ -> M.fail ""
-              end
-          | _ -> M.fail ""
-          end)])
+      begin match (m, n) with
+      | (O, _) -> M.ret True
+      | (S m, S n) -> apply2 le m n
+      | _ -> M.ret False
+      end)
   and leq =
     function (n1, d1) ->
     M.ret (function (n2, d2) ->
@@ -610,36 +565,21 @@ module MakeInterpreter (F: UNSPEC) = struct
       apply2 subz s v)
   and mod' m =
     M.ret (function n ->
-      M.branch [
-        (function () ->
-          let* _tmp = apply2 lt m n in
-          begin match _tmp with
-          | True -> M.ret m
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          let* _tmp = apply2 lt m n in
-          begin match _tmp with
-          | False ->
-              let* s = apply2 sub m n in
-              apply2 mod' s n
-          | _ -> M.fail ""
-          end)])
+      let* cmp = apply2 lt m n in
+      begin match cmp with
+      | True -> M.ret m
+      | False ->
+          let* s = apply2 sub m n in
+          apply2 mod' s n
+      end)
   and mul m =
     M.ret (function n ->
-      M.branch [
-        (function () ->
-          begin match n with
-          | O -> M.ret O
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match n with
-          | S n ->
-              let* p = apply2 mul m n in
-              apply2 add p m
-          | _ -> M.fail ""
-          end)])
+      begin match n with
+      | O -> M.ret O
+      | S n ->
+          let* p = apply2 mul m n in
+          apply2 add p m
+      end)
   and mulq =
     function (n1, d1) ->
     M.ret (function (n2, d2) ->
@@ -671,17 +611,10 @@ module MakeInterpreter (F: UNSPEC) = struct
           | _ -> M.fail ""
           end)])
   and notb b =
-    M.branch [
-      (function () ->
-        begin match b with
-        | True -> M.ret False
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match b with
-        | False -> M.ret True
-        | _ -> M.fail ""
-        end)]
+    begin match b with
+    | True -> M.ret False
+    | False -> M.ret True
+    end
   and odd n =
     let* b = apply1 even n in
     apply1 notb b
@@ -711,19 +644,12 @@ module MakeInterpreter (F: UNSPEC) = struct
     apply1 reduce (n', d)
   and pow m =
     M.ret (function n ->
-      M.branch [
-        (function () ->
-          begin match n with
-          | O -> M.ret (S O)
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match n with
-          | S n ->
-              let* p = apply2 pow m n in
-              apply2 mul m p
-          | _ -> M.fail ""
-          end)])
+      begin match n with
+      | O -> M.ret (S O)
+      | S n ->
+          let* p = apply2 pow m n in
+          apply2 mul m p
+      end)
   and predz n =
     M.branch [
       (function () ->
@@ -788,21 +714,11 @@ module MakeInterpreter (F: UNSPEC) = struct
           end)])
   and sub m =
     M.ret (function n ->
-      M.branch [
-        (function () ->
-          begin match n with
-          | O -> M.ret m
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match n with
-          | S n ->
-              begin match m with
-              | S m -> apply2 sub m n
-              | _ -> M.fail ""
-              end
-          | _ -> M.fail ""
-          end)])
+      begin match (n, m) with
+      | (O, m) -> M.ret m
+      | (S n, S m) -> apply2 sub m n
+      | _ -> M.branch []
+      end)
   and subq a =
     M.ret (function b ->
       let* mb = apply1 oppq b in

@@ -101,97 +101,52 @@ module MakeInterpreter (F: UNSPEC) = struct
 
   let rec andb b1 =
     M.ret (function b2 ->
-      M.branch [
-        (function () ->
-          begin match b1 with
-          | False -> M.ret False
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match b1 with
-          | True -> M.ret b2
-          | _ -> M.fail ""
-          end)])
+      begin match b1 with
+      | True -> M.ret b2
+      | False -> M.ret False
+      end)
   and append: 'a. 'a list -> ('a list -> ('a list) M.t) M.t  =
     function l1 ->
     M.ret (function l2 ->
-      M.branch [
-        (function () ->
-          begin match l1 with
-          | Nil -> M.ret l2
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l1 with
-          | Cons (x, q) ->
-              let* aux = apply2 append q l2 in
-              M.ret (Cons (x, aux))
-          | _ -> M.fail ""
-          end)])
+      begin match l1 with
+      | Nil -> M.ret l2
+      | Cons (x, q) ->
+          let* aux = apply2 append q l2 in
+          M.ret (Cons (x, aux))
+      end)
   and combine: 'a 'b. 'a list -> ('b list -> (('a * 'b) list) M.t) M.t  =
     function la ->
     M.ret (function lb ->
-      M.branch [
-        (function () ->
-          begin match (la, lb) with
-          | (Nil, Nil) -> M.ret Nil
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match (la, lb) with
-          | (Cons (xa, qa), Cons (xb, qb)) ->
-              let* aux = apply2 combine qa qb in
-              M.ret (Cons ((xa, xb), aux))
-          | _ -> M.fail ""
-          end)])
+      begin match (la, lb) with
+      | (Nil, Nil) -> M.ret Nil
+      | (Cons (xa, qa), Cons (xb, qb)) ->
+          let* aux = apply2 combine qa qb in
+          M.ret (Cons ((xa, xb), aux))
+      | _ -> M.branch []
+      end)
   and exists: 'a. ('a -> boolean M.t) -> ('a list -> boolean M.t) M.t  =
     function f ->
     M.ret (function l ->
-      M.branch [
-        (function () ->
-          begin match l with
-          | Nil -> M.ret False
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, q) ->
-              let* b = apply1 f x in
-              let* b' = apply2 exists f q in
-              apply2 orb b b'
-          | _ -> M.fail ""
-          end)])
+      begin match l with
+      | Nil -> M.ret False
+      | Cons (x, q) ->
+          let* b = apply1 f x in
+          let* b' = apply2 exists f q in
+          apply2 orb b b'
+      end)
   and filter: 'a. ('a -> boolean M.t) -> ('a list -> ('a list) M.t) M.t  =
     function f ->
     M.ret (function l ->
-      M.branch [
-        (function () ->
-          begin match l with
-          | Nil -> M.ret Nil
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, q) ->
-              let* _tmp = apply1 f x in
-              begin match _tmp with
-              | False -> apply2 filter f q
-              | _ -> M.fail ""
-              end
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, q) ->
-              let* _tmp = apply1 f x in
-              begin match _tmp with
-              | True ->
-                  let* q' = apply2 filter f q in
-                  M.ret (Cons (x, q'))
-              | _ -> M.fail ""
-              end
-          | _ -> M.fail ""
-          end)])
+      begin match l with
+      | Nil -> M.ret Nil
+      | Cons (x, q) ->
+          let* b = apply1 f x in
+          let* q' = apply2 filter f q in
+          begin match b with
+          | True -> M.ret (Cons (x, q'))
+          | False -> apply2 filter f q
+          end
+      end)
   and find: 'a. ('a -> boolean M.t) -> ('a list -> 'a M.t) M.t  =
     function f ->
     M.ret (function l ->
@@ -211,32 +166,15 @@ module MakeInterpreter (F: UNSPEC) = struct
   and find_first_opt: 'a. ('a -> boolean M.t) -> ('a list -> ('a option) M.t) M.t  =
     function f ->
     M.ret (function l ->
-      M.branch [
-        (function () ->
-          begin match l with
-          | Nil -> M.ret None
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, _) ->
-              let* _tmp = apply1 f x in
-              begin match _tmp with
-              | True -> M.ret (Some x)
-              | _ -> M.fail ""
-              end
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, q) ->
-              let* _tmp = apply1 f x in
-              begin match _tmp with
-              | False -> apply2 find_first_opt f q
-              | _ -> M.fail ""
-              end
-          | _ -> M.fail ""
-          end)])
+      begin match l with
+      | Nil -> M.ret None
+      | Cons (x, q) ->
+          let* b = apply1 f x in
+          begin match b with
+          | True -> M.ret (Some x)
+          | False -> apply2 find_first_opt f q
+          end
+      end)
   and find_opt: 'a. ('a -> boolean M.t) -> ('a list -> ('a option) M.t) M.t  =
     function f ->
     M.ret (function l ->
@@ -283,193 +221,100 @@ module MakeInterpreter (F: UNSPEC) = struct
           end)])
   and flatten: 'a. ('a list) list -> ('a list) M.t  =
     function l ->
-    M.branch [
-      (function () ->
-        begin match l with
-        | Nil -> M.ret Nil
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match l with
-        | Cons (x, q) ->
-            let* aux = apply1 flatten q in
-            apply2 append x aux
-        | _ -> M.fail ""
-        end)]
+    begin match l with
+    | Nil -> M.ret Nil
+    | Cons (x, q) ->
+        let* aux = apply1 flatten q in
+        apply2 append x aux
+    end
   and fold_left: 'a 'b. ('a -> ('b -> 'a M.t) M.t) -> ('a -> ('b list -> 'a M.t) M.t) M.t  =
     function f ->
     M.ret (function a ->
       M.ret (function l ->
-        M.branch [
-          (function () ->
-            begin match l with
-            | Nil -> M.ret a
-            | _ -> M.fail ""
-            end) ;
-          (function () ->
-            begin match l with
-            | Cons (x, q) ->
-                let* a' = apply2 f a x in
-                apply3 fold_left f a' q
-            | _ -> M.fail ""
-            end)]))
+        begin match l with
+        | Nil -> M.ret a
+        | Cons (x, q) ->
+            let* a' = apply2 f a x in
+            apply3 fold_left f a' q
+        end))
   and for_all: 'a. ('a -> boolean M.t) -> ('a list -> boolean M.t) M.t  =
     function f ->
     M.ret (function l ->
-      M.branch [
-        (function () ->
-          begin match l with
-          | Nil -> M.ret True
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, q) ->
-              let* b = apply1 f x in
-              let* b' = apply2 for_all f q in
-              apply2 andb b b'
-          | _ -> M.fail ""
-          end)])
+      begin match l with
+      | Nil -> M.ret True
+      | Cons (x, q) ->
+          let* b = apply1 f x in
+          let* b' = apply2 for_all f q in
+          apply2 andb b b'
+      end)
   and insert: 'a. ('a -> ('a -> boolean M.t) M.t) -> ('a -> ('a list -> ('a list) M.t) M.t) M.t  =
     function le ->
     M.ret (function x ->
       M.ret (function l ->
-        M.branch [
-          (function () ->
-            begin match l with
-            | Nil -> M.ret (Cons (x, Nil))
-            | _ -> M.fail ""
-            end) ;
-          (function () ->
-            begin match l with
-            | Cons (y, q) ->
-                let* cmp = apply2 le x y in
-                M.branch [
-                  (function () ->
-                    begin match cmp with
-                    | True -> M.ret (Cons (x, Cons (y, q)))
-                    | _ -> M.fail ""
-                    end) ;
-                  (function () ->
-                    begin match cmp with
-                    | False ->
-                        let* aux = apply3 insert le x q in
-                        M.ret (Cons (y, aux))
-                    | _ -> M.fail ""
-                    end)]
-            | _ -> M.fail ""
-            end)]))
+        begin match l with
+        | Nil -> M.ret (Cons (x, Nil))
+        | Cons (y, q) ->
+            let* cmp = apply2 le x y in
+            begin match cmp with
+            | True -> M.ret (Cons (x, Cons (y, q)))
+            | False ->
+                let* aux = apply3 insert le x q in
+                M.ret (Cons (y, aux))
+            end
+        end))
   and iter: 'a. ('a -> unit M.t) -> ('a list -> unit M.t) M.t  =
     function f ->
     M.ret (function l ->
-      M.branch [
-        (function () ->
-          begin match l with
-          | Nil -> M.ret ()
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, q) ->
-              let* () = apply1 f x in
-              apply2 iter f q
-          | _ -> M.fail ""
-          end)])
+      begin match l with
+      | Nil -> M.ret ()
+      | Cons (x, q) ->
+          let* () = apply1 f x in
+          apply2 iter f q
+      end)
   and map: 'a 'b. ('a -> 'b M.t) -> ('a list -> ('b list) M.t) M.t  =
     function f ->
     M.ret (function l ->
-      M.branch [
-        (function () ->
-          begin match l with
-          | Nil -> M.ret Nil
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, q) ->
-              let* x' = apply1 f x in
-              let* q' = apply2 map f q in
-              M.ret (Cons (x', q'))
-          | _ -> M.fail ""
-          end)])
+      begin match l with
+      | Nil -> M.ret Nil
+      | Cons (x, q) ->
+          let* x' = apply1 f x in
+          let* q' = apply2 map f q in
+          M.ret (Cons (x', q'))
+      end)
   and orb b1 =
     M.ret (function b2 ->
-      M.branch [
-        (function () ->
-          begin match b1 with
-          | True -> M.ret True
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match b1 with
-          | False -> M.ret b2
-          | _ -> M.fail ""
-          end)])
+      begin match b1 with
+      | True -> M.ret True
+      | False -> M.ret b2
+      end)
   and sort: 'a. ('a -> ('a -> boolean M.t) M.t) -> ('a list -> ('a list) M.t) M.t  =
     function le ->
     M.ret (function l ->
-      M.branch [
-        (function () ->
-          begin match l with
-          | Nil -> M.ret l
-          | _ -> M.fail ""
-          end) ;
-        (function () ->
-          begin match l with
-          | Cons (x, q) ->
-              let* aux = apply2 sort le q in
-              apply3 insert le x aux
-          | _ -> M.fail ""
-          end)])
+      begin match l with
+      | Nil -> M.ret l
+      | Cons (x, q) ->
+          let* aux = apply2 sort le q in
+          apply3 insert le x aux
+      end)
   and split: 'a 'b. ('a * 'b) list -> ('a list * 'b list) M.t  =
     function l ->
-    M.branch [
-      (function () ->
-        begin match l with
-        | Nil -> M.ret (Nil, Nil)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match l with
-        | Cons ((x1, x2), q) ->
-            let* (aux1, aux2) = apply1 split q in
-            M.ret (Cons (x1, aux1), Cons (x2, aux2))
-        | _ -> M.fail ""
-        end)]
+    begin match l with
+    | Nil -> M.ret (Nil, Nil)
+    | Cons ((x1, x2), q) ->
+        let* (aux1, aux2) = apply1 split q in
+        M.ret (Cons (x1, aux1), Cons (x2, aux2))
+    end
   and unfold: 'a. ('a option) list -> (('a list) option) M.t  =
     function l ->
-    M.branch [
-      (function () ->
-        begin match l with
-        | Nil -> M.ret (Some Nil)
-        | _ -> M.fail ""
-        end) ;
-      (function () ->
-        begin match l with
-        | Cons (x, q) ->
-            let* q = apply1 unfold q in
-            M.branch [
-              (function () ->
-                begin match x with
-                | None -> M.ret None
-                | _ -> M.fail ""
-                end) ;
-              (function () ->
-                begin match q with
-                | None -> M.ret None
-                | _ -> M.fail ""
-                end) ;
-              (function () ->
-                begin match x with
-                | Some x ->
-                    begin match q with
-                    | Some q ->
-                        let l' = Cons (x, q) in
-                        M.ret (Some l')
-                    | _ -> M.fail ""
-                    end
-                | _ -> M.fail ""
-                end)]
-        | _ -> M.fail ""
-        end)]
+    begin match l with
+    | Nil -> M.ret (Some Nil)
+    | Cons (x, q) ->
+        let* q = apply1 unfold q in
+        begin match (x, q) with
+        | (Some x, Some q) ->
+            let l' = Cons (x, q) in
+            M.ret (Some l')
+        | _ -> M.ret None
+        end
+    end
 end

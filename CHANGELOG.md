@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 2.5.2
+- Update necro-test
+
 ## Version 2.5.1
 - Update to fix in Necro Lib (0.8.4)
 
