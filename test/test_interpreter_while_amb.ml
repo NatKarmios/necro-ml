@@ -28,42 +28,39 @@ end
 
 let initial_state = SMap.empty
 
-module InterpWhile = MakeInterpreter(Unspec(Monads.ID))
-open InterpWhile
-
+(* Test something deterministic *)
 let () =
-  let t =
-    Seq (
-      Assign ("a", Const 10),
-      If (
-        Equal(Var "a", Const 9),
-        Assign ("x", Const 1),
-        Assign ("x", Const 0)
-      )
-    )
-  in
-  let s = eval_stmt (initial_state, t) in
-  assert(read ("x", s) = Int 0)
-
-
-module InterpWhileList = MakeInterpreter (Unspec(Monads.List))
-open InterpWhileList
+	let open MakeInterpreter(Unspec(Monads.ID)) in
+	let t =
+		Seq (
+			Assign ("a", Const 10),
+			If (
+				Equal(Var "a", Const 9),
+				Assign ("x", Const 1),
+				Assign ("x", Const 0)
+			)
+		)
+	in
+	let s = eval_stmt (initial_state, t) in
+	assert(read ("x", s) = Int 0)
 
 let rec has_values l1 l2 = match l1 with
-  | [] -> l2 = []
-  | a :: q ->
-      List.mem a l2 &&
-      has_values q (List.filter (fun x -> x <> a) l2)
+	| [] -> l2 = []
+	| a :: q ->
+			List.mem a l2 &&
+			has_values q (List.filter (fun x -> x <> a) l2)
 
+(* Test something non-deterministic *)
 let () =
-  let two_or_three = Amb (Cons (Const 2, Cons(Const 3, Nil))) in
-  let t =
-    Seq (
-      Assign ("a", two_or_three),
-      Assign ("b", Plus (Var "a", Var "a"))
-    )
-  in
-  let s = eval_stmt (initial_state, t) in
-  let b = List.map (SMap.find_opt "b") s in
-  assert(has_values [Some (Int 4); Some (Int 6)] b)
+	let open MakeInterpreter(Unspec(Monads.List)) in
+	let two_or_three = Amb (Cons (Const 2, Cons(Const 3, Nil))) in
+	let t =
+		Seq (
+			Assign ("a", two_or_three),
+			Assign ("b", Plus (Var "a", Var "a"))
+		)
+	in
+	let s = eval_stmt (initial_state, t) in
+	let b = List.map (SMap.find_opt "b") s in
+	assert(has_values [Some (Int 4); Some (Int 6)] b)
 
