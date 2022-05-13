@@ -110,8 +110,14 @@ module Bfs = struct
 	let rec eval_step : type a. a t -> a t =
 		let open Queue in
 		begin function
-		| Ret x -> Ret x
+		(* Evaluation over *)
+		| Ret x ->
+				failwith "Impossible to evaluate any further"
+		| Branch l when is_empty l ->
+				failwith "Impossible to evaluate any further"
+		(* Evaluation not over *)
 		| Bind (Ret x, f) -> f x
+		| Bind (Branch l, f) when is_empty l -> Branch (Queue.create ())
 		| Bind (x, f) -> Bind (eval_step x, f)
 		| Apply (f, x) -> f x
 		| Branch l when is_empty l -> Branch l
@@ -132,3 +138,59 @@ module Bfs = struct
 	let apply f x = Apply (f, x)
 	let extract x = eval x
 end
+
+module BfsYield = struct
+	type 'a t =
+		| Ret : 'a -> 'a t
+		| Bind : ('b t * ('b -> 'a t)) -> 'a t
+		| Branch: (unit -> 'a t) Queue.t -> 'a t
+		| Apply : ('a -> 'b t) * 'a -> 'b t
+		| Yield: 'a * 'a t -> 'a t
+	let ret x = Ret x
+	let branch l =
+		let q = Queue.create () in
+		let () = Stdlib.List.iter (fun x -> Queue.push x q) l in
+		Branch q
+	let fail _ = branch []
+	let bind x f = Bind (x, f)
+	let rec eval_step : type a. a t -> a t =
+		let open Queue in
+		begin function
+		(* Evaluation over *)
+		| Ret _ | Yield _ ->
+				failwith "Impossible to evaluate any further"
+		| Branch l when is_empty l ->
+				failwith "Impossible to evaluate any further"
+		(* Evaluation not over *)
+		| Bind (Ret x, f) -> f x
+		| Bind (Branch l, f) when is_empty l -> Branch (Queue.create ())
+		| Bind (x, f) -> Bind (eval_step x, f)
+		| Apply (f, x) -> f x
+		| Branch l ->
+				let x = Queue.take l in
+				begin match x () with
+				| Ret x -> Yield (x, Branch l)
+				| Branch l' -> Queue.transfer l' l; Branch l
+				| w -> Queue.add (fun () -> eval_step w) l; Branch l
+				end
+		end
+	let rec eval: type a. a t -> a * a t =
+		begin function
+		| Ret x -> (x, Branch (Queue.create ()))
+		| Branch l when Queue.is_empty l -> failwith "No result"
+		| Yield (x, t) -> (x, t)
+		| y -> let y' = eval_step y in eval y'
+		end
+	let apply f x = Apply (f, x)
+	let extract x = let (v, _) = eval x in v
+	let yield x = eval x
+end
+
+(* We check that our modules implement the MONAD module type *)
+module _ = (ID:MONAD)
+module _ = (List:MONAD)
+module _ = (Cont:MONAD)
+module _ = (ContPoly:MONAD)
+module _ = (Bfs:MONAD)
+module _ = (BfsYield:MONAD)
+module _ (M:MONAD) = (Rand(M):MONAD)
