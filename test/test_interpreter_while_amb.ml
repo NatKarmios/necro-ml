@@ -4,60 +4,50 @@ open While_amb
 
 module SMap = Map.Make(String)
 
-module T = struct
-  type ident = string
-  type lit = int
-  type vint = int
-  type vbool = bool
-  type value =
-  | Bool of vbool
-  | Int of vint
-  type state = value SMap.t
-end
-
-module Unspec = struct
+module Unspec(M: MONAD) = struct
+	module rec T : sig
+		type ident = string
+		type lit = int
+		type vint = int
+		type state = Unspec(M)(T).value SMap.t
+	end = T
 	include T
-	include Unspec(Monads.List)(T)
-  module S = struct
-    type 'a t = state -> 'a * state
-    let bind x f =
-      function s ->
-        let (y, s') = x s in
-        f y s'
-    let ret x = fun s -> (x, s)
-  end
 
-  let add (a, b) = [Int (a + b)]
-  let eq (a, b) = [Bool (a = b)]
-  let isBool = function
-    | Bool b -> [b]
-    | _ -> []
-  let isFalse = function
-    | true -> []
-    | false -> [()]
-  let isInt = function
-    | Int i -> [i]
-    | _ -> []
-  let isTrue = function
-    | true -> [()]
-    | false -> []
-  let litToVal lit = [Int lit]
-  let neg = function
-    | true -> [Bool false]
-    | false -> [Bool true]
-  let read (ident, state) =
-    Option.to_list (SMap.find_opt ident state)
+	include Unspec(M)(T)
+  let add (a, b) = M.ret (a + b)
+  let eq (a, b) = M.ret (if a = b then True else False)
+  let litToVal lit = M.ret (Int lit)
+  let read (ident, state): value M.t =
+		begin match SMap.find_opt ident state with
+		| None -> M.fail ("unbound value " ^ ident)
+		| Some x -> M.ret x
+		end
   let write (ident, state, value) =
-    [SMap.add ident value state]
+    M.ret (SMap.add ident value state)
 end
-
-module InterpWhile = MakeInterpreter (Unspec)
-
-open T
-open Unspec
-open InterpWhile
 
 let initial_state = SMap.empty
+
+module InterpWhile = MakeInterpreter(Unspec(Monads.ID))
+open InterpWhile
+
+let () =
+  let t =
+    Seq (
+      Assign ("a", Const 10),
+      If (
+        Equal(Var "a", Const 9),
+        Assign ("x", Const 1),
+        Assign ("x", Const 0)
+      )
+    )
+  in
+  let s = eval_stmt (initial_state, t) in
+  assert(read ("x", s) = Int 0)
+
+
+module InterpWhileList = MakeInterpreter (Unspec(Monads.List))
+open InterpWhileList
 
 let rec has_values l1 l2 = match l1 with
   | [] -> l2 = []

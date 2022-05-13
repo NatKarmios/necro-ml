@@ -6,8 +6,6 @@ module type TYPES = sig
   type ident
   type lit
   type state
-  type value
-  type vbool
   type vint
 end
 
@@ -27,7 +25,10 @@ module type UNSPEC = sig
   module M: MONAD
   include TYPES
 
-  type stmt =
+  type value =
+  | Int of vint
+  | Bool of boolean
+  and stmt =
   | While of (expr * stmt)
   | Skip
   | Seq of (stmt * stmt)
@@ -40,18 +41,16 @@ module type UNSPEC = sig
   | Equal of (expr * expr)
   | Const of lit
   | Amb of expr alist
+  and boolean =
+  | True
+  | False
   and 'a alist =
   | Nil
   | Cons of ('a * 'a alist)
 
-  val add: vint * vint -> value M.t
-  val eq: vint * vint -> value M.t
-  val isBool: value -> vbool M.t
-  val isFalse: vbool -> unit M.t
-  val isInt: value -> vint M.t
-  val isTrue: vbool -> unit M.t
+  val add: vint * vint -> vint M.t
+  val eq: vint * vint -> boolean M.t
   val litToVal: lit -> value M.t
-  val neg: vbool -> value M.t
   val read: ident * state -> value M.t
   val write: ident * state * value -> state M.t
 end
@@ -62,7 +61,10 @@ module Unspec (M: MONAD) (T: TYPES) = struct
   include T
   module M = M
 
-  type stmt =
+  type value =
+  | Int of vint
+  | Bool of boolean
+  and stmt =
   | While of (expr * stmt)
   | Skip
   | Seq of (stmt * stmt)
@@ -75,18 +77,16 @@ module Unspec (M: MONAD) (T: TYPES) = struct
   | Equal of (expr * expr)
   | Const of lit
   | Amb of expr alist
+  and boolean =
+  | True
+  | False
   and 'a alist =
   | Nil
   | Cons of ('a * 'a alist)
 
   let add _ = raise (NotImplemented "add")
   let eq _ = raise (NotImplemented "eq")
-  let isBool _ = raise (NotImplemented "isBool")
-  let isFalse _ = raise (NotImplemented "isFalse")
-  let isInt _ = raise (NotImplemented "isInt")
-  let isTrue _ = raise (NotImplemented "isTrue")
   let litToVal _ = raise (NotImplemented "litToVal")
-  let neg _ = raise (NotImplemented "neg")
   let read _ = raise (NotImplemented "read")
   let write _ = raise (NotImplemented "write")
 end
@@ -98,11 +98,12 @@ module type INTERPRETER = sig
   type ident
   type lit
   type state
-  type value
-  type vbool
   type vint
 
-  type stmt =
+  type value =
+  | Int of vint
+  | Bool of boolean
+  and stmt =
   | While of (expr * stmt)
   | Skip
   | Seq of (stmt * stmt)
@@ -115,21 +116,20 @@ module type INTERPRETER = sig
   | Equal of (expr * expr)
   | Const of lit
   | Amb of expr alist
+  and boolean =
+  | True
+  | False
   and 'a alist =
   | Nil
   | Cons of ('a * 'a alist)
 
-  val add: vint * vint -> value M.t
+  val add: vint * vint -> vint M.t
   val amb: 'a alist -> 'a M.t
-  val eq: vint * vint -> value M.t
+  val eq: vint * vint -> boolean M.t
   val eval_expr: state * expr -> value M.t
   val eval_stmt: state * stmt -> state M.t
-  val isBool: value -> vbool M.t
-  val isFalse: vbool -> unit M.t
-  val isInt: value -> vint M.t
-  val isTrue: vbool -> unit M.t
   val litToVal: lit -> value M.t
-  val neg: vbool -> value M.t
+  val neg: boolean -> boolean M.t
   val read: ident * state -> value M.t
   val write: ident * state * value -> state M.t
 end
@@ -159,24 +159,42 @@ module MakeInterpreter (F: UNSPEC) = struct
     | Const i -> apply1 litToVal i
     | Var x -> apply1 read (x, s)
     | Plus (t1, t2) ->
-        let* f1 = apply1 eval_expr (s, t1) in
-        let* f1' = apply1 isInt f1 in
-        let* f2 = apply1 eval_expr (s, t2) in
-        let* f2' = apply1 isInt f2 in
-        apply1 add (f1', f2')
+        let* _tmp = apply1 eval_expr (s, t1) in
+        begin match _tmp with
+        | Int f1 ->
+            let* _tmp = apply1 eval_expr (s, t2) in
+            begin match _tmp with
+            | Int f2 ->
+                let* v = apply1 add (f1, f2) in
+                M.ret (Int v)
+            | _ -> M.fail ""
+            end
+        | _ -> M.fail ""
+        end
     | Equal (t1, t2) ->
-        let* f1 = apply1 eval_expr (s, t1) in
-        let* f1' = apply1 isInt f1 in
-        let* f2 = apply1 eval_expr (s, t2) in
-        let* f2' = apply1 isInt f2 in
-        apply1 eq (f1', f2')
+        let* _tmp = apply1 eval_expr (s, t1) in
+        begin match _tmp with
+        | Int f1 ->
+            let* _tmp = apply1 eval_expr (s, t2) in
+            begin match _tmp with
+            | Int f2 ->
+                let* v = apply1 eq (f1, f2) in
+                M.ret (Bool v)
+            | _ -> M.fail ""
+            end
+        | _ -> M.fail ""
+        end
     | Amb l ->
         let* x = apply1 amb l in
         apply1 eval_expr (s, x)
     | Not t ->
-        let* f1 = apply1 eval_expr (s, t) in
-        let* f1' = apply1 isBool f1 in
-        apply1 neg f1'
+        let* _tmp = apply1 eval_expr (s, t) in
+        begin match _tmp with
+        | Bool f1 ->
+            let* b = apply1 neg f1 in
+            M.ret (Bool b)
+        | _ -> M.fail ""
+        end
     end
   and eval_stmt =
     function (s, t) ->
@@ -189,25 +207,31 @@ module MakeInterpreter (F: UNSPEC) = struct
         let* f1 = apply1 eval_stmt (s, t1) in
         apply1 eval_stmt (f1, t2)
     | If (t1, t2, t3) ->
-        let* f1 = apply1 eval_expr (s, t1) in
-        let* f1' = apply1 isBool f1 in
-        M.branch [
-          (function () ->
-            let* _ = apply1 isTrue f1' in
-            apply1 eval_stmt (s, t2)) ;
-          (function () ->
-            let* _ = apply1 isFalse f1' in
-            apply1 eval_stmt (s, t3))]
+        let* _tmp = apply1 eval_expr (s, t1) in
+        begin match _tmp with
+        | Bool f1 ->
+            begin match f1 with
+            | True -> apply1 eval_stmt (s, t2)
+            | False -> apply1 eval_stmt (s, t3)
+            end
+        | _ -> M.fail ""
+        end
     | While (t1, t2) ->
-        let* f1 = apply1 eval_expr (s, t1) in
-        let* f1' = apply1 isBool f1 in
-        M.branch [
-          (function () ->
-            let* _ = apply1 isTrue f1' in
-            let* f2 = apply1 eval_stmt (s, t2) in
-            apply1 eval_stmt (f2, While (t1, t2))) ;
-          (function () ->
-            let* _ = apply1 isFalse f1' in
-            M.ret s)]
+        let* _tmp = apply1 eval_expr (s, t1) in
+        begin match _tmp with
+        | Bool f1 ->
+            begin match f1 with
+            | True ->
+                let* f2 = apply1 eval_stmt (s, t2) in
+                apply1 eval_stmt (f2, While (t1, t2))
+            | False -> M.ret s
+            end
+        | _ -> M.fail ""
+        end
+    end
+  and neg b =
+    begin match b with
+    | True -> M.ret False
+    | False -> M.ret True
     end
 end
