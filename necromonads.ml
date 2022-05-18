@@ -1,3 +1,40 @@
+module Queue:
+	sig
+		type 'a queue
+		val empty: 'a queue
+		val is_empty: 'a queue -> bool
+		val to_list: 'a queue -> 'a list
+		val of_list: 'a list -> 'a queue
+		val push: 'a * 'a queue -> 'a queue
+		val pop: 'a queue -> 'a * 'a queue
+		val append: 'a queue * 'a queue -> 'a queue
+	end =
+struct
+	type 'a queue =
+		{ outbox: 'a list; inbox: 'a list}
+	let empty = {outbox=[]; inbox=[]}
+	let is_empty {outbox; inbox} =
+		outbox = [] && inbox = []
+	let push (x, q) =
+		{q with inbox = x::q.inbox}
+	let pop q =
+		begin match q.outbox with
+		| a :: o ->
+				(a, {q with outbox=o})
+		| [] ->
+				begin match Stdlib.List.rev q.inbox with
+				| [] -> failwith "Empty queue"
+				| a :: q -> (a, {outbox=q;inbox=[]})
+				end
+		end
+	let to_list {inbox;outbox} =
+		outbox @ List.rev inbox
+	let of_list l =
+		{inbox = []; outbox = l}
+	let append (a, b) =
+		{b with inbox = (to_list a) @ b.inbox}
+end
+
 module type MONAD = sig
   type 'a t
   val ret: 'a -> 'a t
@@ -98,35 +135,30 @@ module Bfs = struct
 	type 'a t =
 		| Ret : 'a -> 'a t
 		| Bind : ('b t * ('b -> 'a t)) -> 'a t
-		| Branch: (unit -> 'a t) Queue.t -> 'a t
+		| Branch: (unit -> 'a t) Queue.queue -> 'a t
 		| Apply : ('a -> 'b t) * 'a -> 'b t
 	let ret x = Ret x
-	let branch l =
-		let q = Queue.create () in
-		let () = Stdlib.List.iter (fun x -> Queue.push x q) l in
-		Branch q
+	let branch l = Branch (Queue.of_list l)
 	let fail _ = branch []
 	let bind x f = Bind (x, f)
 	let rec eval_step : type a. a t -> a t =
-		let open Queue in
 		begin function
 		(* Evaluation over *)
 		| Ret x ->
 				failwith "Impossible to evaluate any further"
-		| Branch l when is_empty l ->
+		| Branch l when Queue.is_empty l ->
 				failwith "Impossible to evaluate any further"
 		(* Evaluation not over *)
 		| Bind (Ret x, f) -> f x
-		| Bind (Branch l, f) when is_empty l -> Branch (Queue.create ())
+		| Bind (Branch l, f) when Queue.is_empty l -> Branch (Queue.empty)
 		| Bind (x, f) -> Bind (eval_step x, f)
 		| Apply (f, x) -> f x
-		| Branch l when is_empty l -> Branch l
 		| Branch l ->
-				let x = Queue.take l in
+				let (x, q) = Queue.pop l in
 				begin match x () with
 				| Ret x -> Ret x
-				| Branch l' -> Queue.transfer l' l; Branch l
-				| w -> Queue.add (fun () -> eval_step w) l; Branch l
+				| Branch l' -> Branch (Queue.append (q, l'))
+				| w -> Branch (Queue.push ((fun () -> eval_step w), q))
 				end
 		end
 	let rec eval: type a. a t -> a =
@@ -143,40 +175,36 @@ module BfsYield = struct
 	type 'a t =
 		| Ret : 'a -> 'a t
 		| Bind : ('b t * ('b -> 'a t)) -> 'a t
-		| Branch: (unit -> 'a t) Queue.t -> 'a t
+		| Branch: (unit -> 'a t) Queue.queue -> 'a t
 		| Apply : ('a -> 'b t) * 'a -> 'b t
 		| Yield: 'a * 'a t -> 'a t
 	let ret x = Ret x
-	let branch l =
-		let q = Queue.create () in
-		let () = Stdlib.List.iter (fun x -> Queue.push x q) l in
-		Branch q
+	let branch l = Branch (Queue.of_list l)
 	let fail _ = branch []
 	let bind x f = Bind (x, f)
 	let rec eval_step : type a. a t -> a t =
-		let open Queue in
 		begin function
 		(* Evaluation over *)
 		| Ret _ | Yield _ ->
 				failwith "Impossible to evaluate any further"
-		| Branch l when is_empty l ->
+		| Branch l when Queue.is_empty l ->
 				failwith "Impossible to evaluate any further"
 		(* Evaluation not over *)
 		| Bind (Ret x, f) -> f x
-		| Bind (Branch l, f) when is_empty l -> Branch (Queue.create ())
+		| Bind (Branch l, f) when Queue.is_empty l -> Branch Queue.empty
 		| Bind (x, f) -> Bind (eval_step x, f)
 		| Apply (f, x) -> f x
 		| Branch l ->
-				let x = Queue.take l in
+				let (x, q) = Queue.pop l in
 				begin match x () with
-				| Ret x -> Yield (x, Branch l)
-				| Branch l' -> Queue.transfer l' l; Branch l
-				| w -> Queue.add (fun () -> eval_step w) l; Branch l
+				| Ret x -> Yield (x, Branch q)
+				| Branch l' -> Branch (Queue.append (q, l'))
+				| w -> Branch (Queue.push ((fun () -> eval_step w), q))
 				end
 		end
 	let rec eval: type a. a t -> a * a t =
 		begin function
-		| Ret x -> (x, Branch (Queue.create ()))
+		| Ret x -> (x, Branch Queue.empty)
 		| Branch l when Queue.is_empty l -> failwith "No result"
 		| Yield (x, t) -> (x, t)
 		| y -> let y' = eval_step y in eval y'
