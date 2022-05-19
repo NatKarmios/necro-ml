@@ -1,6 +1,6 @@
 open Brainfuck
 
-module Unspec = struct
+module Input = struct
 	include Unspec(Monads.ID)(struct end)
 	let bit_of_int = function
 		| 0 -> Zero
@@ -46,9 +46,9 @@ module Unspec = struct
 		o := String.concat "" [!o ; String.make 1 c];
 end
 
-module Interp = MakeInterpreter (Unspec)
+module Interp = MakeInterpreter (Input)
 
-open Unspec
+open Input
 open Interp
 
 

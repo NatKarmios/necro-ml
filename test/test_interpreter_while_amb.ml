@@ -4,7 +4,8 @@ open While_amb
 
 module SMap = Map.Make(String)
 
-module Unspec(M: MONAD) = struct
+module Input(M: MONAD) = struct
+
 	module rec T : sig
 		type ident = string
 		type lit = int
@@ -24,13 +25,14 @@ module Unspec(M: MONAD) = struct
 		end
   let write (ident, state, value) =
     M.ret (SMap.add ident value state)
+
 end
 
 let initial_state = SMap.empty
 
 (* Test something deterministic *)
 let () =
-	let open MakeInterpreter(Unspec(Monads.ID)) in
+	let open MakeInterpreter(Input(Monads.ID)) in
 	let t =
 		Seq (
 			Assign ("a", Const 10),
@@ -52,7 +54,7 @@ let rec has_values l1 l2 = match l1 with
 
 (* Test something non-deterministic *)
 let () =
-	let open MakeInterpreter(Unspec(Monads.List)) in
+	let open MakeInterpreter(Input(Monads.List)) in
 	let two_or_three = Amb (Cons (Const 2, Cons(Const 3, Nil))) in
 	let t =
 		Seq (

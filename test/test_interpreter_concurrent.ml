@@ -13,7 +13,7 @@ module T = struct
   type state = value SMap.t
 end
 
-module Unspec = struct
+module Input = struct
 	include T
 	include Unspec(Monads.List)(T)
   let litToVal lit = [Int lit]
@@ -33,10 +33,10 @@ module Unspec = struct
   let neg b = [Bool (not b)]
 end
 
-module InterpWhile = MakeInterpreter (Unspec)
+module InterpWhile = MakeInterpreter (Input)
 
 open T
-open Unspec
+open Input
 open InterpWhile
 
 let ( let* ) l f = List.flatten (List.map f l)

@@ -7,7 +7,7 @@ module rec T: sig
 	type env = (T.ident * Unspec(M)(T).clos) list
 end = T
 
-module Unspec = struct
+module Input = struct
 	include T
 	include Unspec(M)(T)
 	let mkClos (id, lt, env) = Clos (id, lt, env)
@@ -17,7 +17,7 @@ module Unspec = struct
 		let (_,c) = List.find (fun (i, _) -> i = id) env in c
 end
 
-module InterpLambda = MakeInterpreter (Unspec)
+module InterpLambda = MakeInterpreter (Input)
 
 open InterpLambda
 
@@ -29,7 +29,7 @@ let rec string_of_lterm = function
 	| App (lt1, Var id2) -> "(" ^ (string_of_lterm lt1) ^ ") " ^ id2
 	| App (lt1, lt2) ->
 		Printf.sprintf "(%s) (%s)" (string_of_lterm lt1) (string_of_lterm lt2)
-let rec string_of_clos (Unspec.Clos (id, lt, env)) =
+let rec string_of_clos (Input.Clos (id, lt, env)) =
 	let f acc (id, clos) = acc ^ id ^ " ==> " ^ (string_of_clos clos) ^ " " in
 	Printf.sprintf "(%s, %s, [%s])"
 		id (string_of_lterm lt) (List.fold_left f " " env)
@@ -46,8 +46,8 @@ let rec unfold t env =
 	match t with
 	| Var x -> begin
 		try
-			let Unspec.Clos (b, t', env') =
-				try Unspec.getEnv (x, env) with _ -> failwith "unfold - getEnv"
+			let Input.Clos (b, t', env') =
+				try Input.getEnv (x, env) with _ -> failwith "unfold - getEnv"
 			in
 			Lam (b, unfold t' env')
 		with _ -> t
@@ -160,7 +160,7 @@ let () =
 	let lt = factorial $ (mkint 6) in
 	let c = eval e0 lt in
 	let b, t, env =
-		try Unspec.getClos c with _ -> failwith "noresult"
+		try Input.getClos c with _ -> failwith "noresult"
 	in
 	let ut = unfold (Lam (b, t)) env in
 	let tf = simpl ut 2 in

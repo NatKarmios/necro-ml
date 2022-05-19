@@ -7,7 +7,7 @@ module rec T: sig
   type state = (ident, Unspec(Monads.ID)(T).value) Hashtbl.t
 end = T
 
-module NewFlow = struct
+module Input = struct
 	include T
 	include Unspec(Monads.ID)(T)
   let assert_necro b =
@@ -35,14 +35,14 @@ module NewFlow = struct
   let zero = 0
 end
 
-module Interp = MakeInterpreter (NewFlow)
+module Interp = MakeInterpreter (Input)
 
-open NewFlow
+open Input
 open Interp
 
 let initial_state () = Hashtbl.create 5
 
-let get_var s x = NewFlow.read (x, s)
+let get_var s x = Input.read (x, s)
 
 let () =
   let t =

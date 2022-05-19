@@ -11,7 +11,7 @@ module T = struct
   type state = (ident, value) Hashtbl.t
 end
 
-module Unspec = struct
+module Input = struct
 	include T
 	include Unspec(Monads.ID)(T)
   let o_to_v = function
@@ -40,9 +40,9 @@ module Unspec = struct
 end
 
 
-module InterpWhile = MakeInterpreter (Unspec)
+module InterpWhile = MakeInterpreter (Input)
 
-open Unspec
+open Input
 open InterpWhile
 
 let initial_state () = Hashtbl.create 29
@@ -59,5 +59,5 @@ let () =
     )
   in
   let s = eval_stmt (initial_state(), t) in
-  assert(Unspec.read ("x", get s) = Some (Int 0))
+  assert(Input.read ("x", get s) = Some (Int 0))
 

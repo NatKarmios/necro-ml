@@ -77,6 +77,12 @@ test: necroml Makefile $(TESTS)
 	@ocamlc -I test test/monads.ml test/brainfuck.ml test/test_interpreter_bf.ml -o test_interpreter_bf.native
 	@./test_interpreter_bf.native || echo "$(red)Error in file brainfuck.sk testing necroml.$(reset)"
 
+	@echo "Testing necroml on buggy_branch.sk"
+	@set -o pipefail
+	@./necroml necro-test/buggy_branch.sk -o test/buggy_branch.ml
+	@ocamlc -I test test/monads.ml test/buggy_branch.ml test/test_interpreter_buggy_branch.ml -o test_interpreter_buggy_branch.native
+	@./test_interpreter_buggy_branch.native || echo "$(red)Error in file buggy_branch.sk testing necroml.$(reset)"
+
 	@echo "Testing necroml on implicits.sk"
 	@set -o pipefail
 	@./necroml necro-test/implicits.sk -o test/implicits.ml

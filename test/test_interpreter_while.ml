@@ -12,7 +12,7 @@ module rec T: sig
 	end = T
 
 
-module Unspec = struct
+module Input = struct
 	include Unspec(Monads.ID)(T)
   let litToVal lit = Int lit
   let read ident = fun state -> (SMap.find ident state, state)
@@ -23,9 +23,9 @@ module Unspec = struct
   let eq (a, b) = if a = b then True else False
 end
 
-module InterpWhile = MakeInterpreter (Unspec)
+module InterpWhile = MakeInterpreter (Input)
 
-open Unspec
+open Input
 open InterpWhile
 
 let initial_state = SMap.empty
@@ -42,7 +42,7 @@ let () =
     )
   in
   let ((), s) = eval_stmt t initial_state in
-  assert(fst (Unspec.read "x" s) = Int 0)
+  assert(fst (read "x" s) = Int 0)
 
 let () =
   let t =
@@ -85,12 +85,12 @@ let () =
     c := !c + !b ;
     i := !i + 1
   done ;
-  assert(fst (Unspec.read "n" s) = Int !n) ;
-  assert(fst (Unspec.read "a" s) = Int !a) ;
-  assert(fst (Unspec.read "b" s) = Int !b) ;
-  assert(fst (Unspec.read "c" s) = Int !c) ;
-  assert(fst (Unspec.read "i" s) = Int !i) ;
-  assert(fst (Unspec.read "d" s) = Int !d)
+  assert(fst (read "n" s) = Int !n) ;
+  assert(fst (read "a" s) = Int !a) ;
+  assert(fst (read "b" s) = Int !b) ;
+  assert(fst (read "c" s) = Int !c) ;
+  assert(fst (read "i" s) = Int !i) ;
+  assert(fst (read "d" s) = Int !d)
 
 let () =
   let t =
@@ -127,5 +127,5 @@ let () =
   let rec fact = function
     | 0 -> 1
     | i -> i * fact (i - 1) in
-  assert(fst (Unspec.read "fact" s) = Int (fact 10))
+  assert(fst (read "fact" s) = Int (fact 10))
 
