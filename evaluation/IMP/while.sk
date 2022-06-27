@@ -1,0 +1,83 @@
+type ident
+type lit
+type state
+type vint
+
+type boolean =
+| True | False
+
+type value =
+| Int vint | Bool boolean
+
+type expr =
+| Const lit
+| Var ident
+| Plus (expr, expr)
+| Equal (expr, expr)
+| Not expr
+
+type stmt =
+| Skip
+| Assign (ident, expr)
+| Seq (stmt, stmt)
+| If (expr, stmt, stmt)
+| While (expr, stmt)
+
+val litToVal : lit → value
+val read : (ident, state) → value
+val write : (ident, state, value) → state
+val add : (vint, vint) → vint
+val eq : (vint, vint) → boolean
+
+val neg (b:boolean): boolean =
+	match b with
+	| True → False
+	| False → True
+	end
+
+val eval_expr ((s,e):(state,expr)): value =
+match e with
+| Const i →
+	litToVal i
+| Var x →
+	read (x, s)
+| Plus (e1, e2) →
+	let Int i1 = eval_expr (s, e1) in
+	let Int i2 = eval_expr (s, e2) in
+	let i = add (i1, i2) in
+	Int i
+| Equal (e1, e2) →
+	let Int i1 = eval_expr (s, e1) in
+	let Int i2 = eval_expr (s, e2) in
+	let b = eq (i1, i2) in
+	Bool b
+| Not e →
+	let Bool b = eval_expr (s, e) in
+	let b' = neg b in
+	Bool b'
+end
+
+val eval_stmt ((s,t):(state,stmt)): state =
+	match t with
+	| Skip → s
+	| Assign (x, e) →
+		let v = eval_expr (s, e) in
+		write (x, s, v)
+	| Seq (t1, t2) →
+		let s' = eval_stmt (s, t1) in
+		eval_stmt (s', t2)
+	| If (cond, true, false) →
+		let Bool b = eval_expr (s, cond) in
+		match b with
+		| True → eval_stmt (s, true)
+		| False → eval_stmt (s, false)
+		end
+	| While (cond, t') →
+		let Bool b = eval_expr (s, cond) in
+		match b with
+		| True →
+			let s' = eval_stmt (s, t') in
+			eval_stmt (s', t)
+		| False → s
+		end
+	end

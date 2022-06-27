@@ -1,0 +1,148 @@
+type ident
+type lit
+
+type state
+type value
+type vint
+type vbool
+
+type expr =
+| Const lit
+| Var ident
+| Plus (expr, expr)
+| Equal (expr, expr)
+| Not expr
+| Value value
+
+type stmt =
+| Skip
+| Assign (ident, expr)
+| Seq (stmt, stmt)
+| If (expr, stmt, stmt)
+| While (expr, stmt)
+| While2 (expr, expr, stmt)
+| Parallel (stmt, stmt)
+| Assert expr
+
+val litToVal : lit → value
+val read : (ident, state) → value
+val write : (ident, state, value) → state
+val isInt : value → vint
+val isBool : value → vbool
+val add : (vint, vint) → value
+val eq : (vint, vint) → value
+val neg : vbool → value
+val isTrue : vbool → ()
+val isFalse : vbool → ()
+
+
+val eval_expr (s:state) (e:expr): expr =
+	match e with
+	| Const i →
+		let v = litToVal (i) in
+		Value v
+	| Var x →
+		let v = read (x, s) in
+		Value v
+	| Plus (Value v1, Value v2) →
+		let i1 = isInt v1 in
+		let i2 = isInt v2 in
+		let v = add (i1, i2) in
+		Value v
+	| Plus (t1, t2) →
+		branch
+			let t'1 = eval_expr s t1 in
+			Plus(t'1, t2)
+		or
+			let t'2 = eval_expr s t2 in
+			Plus(t1, t'2)
+		end
+	| Equal (Value v1, Value v2) →
+		let i1 = isInt v1 in
+		let i2 = isInt v2 in
+		let v = eq (i1, i2) in
+		Value v
+	| Equal (t1, t2) →
+		branch
+			let t'1 = eval_expr s t1 in
+			Equal (t'1, t2)
+		or
+			let t'2 = eval_expr s t2 in
+			Equal (t1, t'2)
+		end
+	| Not (Value v) →
+		let b = isBool v in
+		let b' = neg b in
+		Value b'
+	| Not t →
+		let t' = eval_expr s t in
+		Not t'
+	| Value _ → (branch end: expr)
+	end
+
+val evalss_stmt (s:state) (t:stmt): (state, stmt) =
+	match t with
+	| Assign (x, Value v) →
+		let s' = write (x, s, v) in
+		(s', Skip)
+	| Assign (x, t) →
+		let t' = eval_expr s t in
+		(s, Assign (x, t'))
+	| Seq (Skip, t2) →
+		(s, t2)
+	| Seq (t1, t2) →
+		let (s', t'1) = evalss_stmt s t1 in
+		(s', Seq (t'1, t2))
+	| If (Value e, iftrue, iffalse) →
+		let b = isBool e in
+		branch
+			isTrue b ;
+			(s, iftrue)
+		or
+			isFalse b ;
+			(s, iffalse)
+		end
+	| If (e, iftrue, iffalse) →
+		let e' = eval_expr s e in
+		(s, If (e', iftrue, iffalse))
+	| While (e, t) →
+		(s, While2 (e, e, t))
+	| While2 (Value v, e, t) →
+		let b = isBool v in
+		branch
+			isTrue b ;
+			(s, Seq (t, While(e, t)))
+		or
+			isFalse b ;
+			(s, Skip)
+		end
+	| While2 (e1, e2, t) →
+		let e'1 = eval_expr s e1 in
+		(s, While2 (e'1, e2, t))
+	| Parallel (Skip, Skip) →
+		(s, Skip)
+	| Parallel (t1, t2) →
+		branch
+			let (s', t'1) = evalss_stmt s t1 in
+			(s', Parallel(t'1, t2))
+		or
+			let (s', t'2) = evalss_stmt s t2 in
+			(s', Parallel(t1, t'2))
+		end
+	| Assert (Value v) ->
+			let b = isBool v in
+			let () = isTrue b in
+			(s, Skip)
+	| Assert e ->
+			let e' = eval_expr s e in
+			(s, Assert e')
+	| Skip → (branch end: (state, stmt))
+	end
+
+val eval_stmt (s:state) (t:stmt): state =
+	match t with
+	| Skip → s
+	| _ →
+		let (s, t) = evalss_stmt s t in
+		eval_stmt s t
+	end

@@ -1,0 +1,8 @@
+type boolean =
+| True | False
+
+val neg (b:boolean): boolean =
+	match b with
+	| True → False
+	| False → True
+	end

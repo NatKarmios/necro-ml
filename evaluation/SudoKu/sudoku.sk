@@ -1,0 +1,151 @@
+open boolean
+open nat
+open list
+
+
+type line := list<nat>
+type grid := (nat,list<list<nat>>)
+
+val correct_set (l:line): boolean =
+	match l with
+	| Nil → True
+	| Cons (x, q) →
+		let void_x = eq Z x in
+		match void_x with
+		| True → correct_set q
+		| False →
+			let incorrect_x = mem<nat> eq x q in
+			match incorrect_x with
+			| True → False
+			| False → correct_set q
+			end
+		end
+	end
+
+(** returns [range n + accu] *)
+val range_aux (n:nat) (accu:list<nat>): list<nat> =
+	match n with
+	| Z → accu
+	| S m →
+		let accu' = Cons<nat> (m, accu) in
+		range_aux m accu'
+	end
+
+(** [range n] is the list [[0, ..., n-1]] *)
+val range (n:nat): list<nat> =
+	range_aux n Nil<nat>
+
+(** Checks whether the n-th line is correct.
+    Lines are numeroted from 0 to size² - 1 *)
+val correct_line (g:list<list<nat>>) (n:nat): boolean =
+		let line = nth<list<nat>> n g in
+		correct_set line
+
+(** Checks whether the square at position (x, y) is correct.
+    Positions are numeroted from 0 to size - 1 *)
+val correct_square (g:grid) (x:nat) (y:nat): boolean =
+	let (size, g) = g in
+	let x = mul x size in
+	let y = mul y size in
+	let lines = sub<list<nat>> y size g in
+	let square = map<line,line>(λ l : line → sub<nat> x size l) lines in
+	let values = flatten<nat> square in
+	correct_set values
+
+(** Checks whether the n-th column is correct.
+    Columns are numeroted from 0 to size² - 1 *)
+val correct_column (g:list<list<nat>>) (n:nat): boolean =
+	let col = map<line,nat> (λ l: line → nth<nat> n l) g in
+	correct_set col
+
+val correct_grid (g:grid): boolean =
+	let (n, g') = g in
+	let range_n = range n in
+	let n2 = mul n n in
+	let range_n2 = range n2 in
+	let c = forall<nat> (λ n:nat → correct_column g' n) range_n2 in
+	let l = forall<nat> (λ n:nat → correct_line g' n) range_n2 in
+	let s =
+		forall<nat> (λ h:nat →
+			forall<nat> (λ w:nat →
+				correct_square g h w) range_n) range_n in
+	forall<boolean> (λ x:boolean → x)
+		(Cons<boolean> (c, Cons<boolean> (l, Cons<boolean> (s, Nil<boolean>))))
+
+val solved_line (l:line): boolean =
+	forall<nat> (λ x:nat → neq Z x) l
+
+val solved (g:grid): boolean =
+	let (_, g) = g in
+	forall<line> solved_line g
+
+(** Pick an element of list l *)
+val pick<a> (l:list<a>): a =
+	let Cons (x, q) = l in
+	branch
+		x
+	or
+		pick<a> q
+	end
+
+(** pick a nat < n *)
+val pick_nat (n:nat): nat =
+	let range_n = range n in
+	pick<nat> range_n
+
+val insert (m:nat) (n:nat) (v:nat) (g:list<list<nat>>): (nat, list<list<nat>>) =
+	let l = nth<list<nat>> m g in
+	let (w, new_l) = switch<nat> n v l in
+	let (_, new_g) = switch<list<nat>> m new_l g in
+	(w, new_g)
+
+val get_first_zero_aux (grid:grid) (m:nat) (n:nat): (nat, nat) =
+	let (size, g) = grid in
+	let size2 = mul size size in
+	let over_m = eq m size2 in
+	match over_m with
+	| True → (size2, size2)
+	| False →
+		let over_n = eq n size2 in
+		match over_n with
+		| True →
+			get_first_zero_aux grid (S m) Z
+		| False →
+			let line = nth<list<nat>> m g in
+			let digit = nth<nat> n line in
+			match digit with
+			| Z → (m, n)
+			| _ → get_first_zero_aux grid m (S n)
+			end
+		end
+	end
+
+val get_first_zero (g:grid): (nat, nat) =
+	get_first_zero_aux g Z Z
+
+val fill (g:grid): grid =
+	let (size, g) = g in
+	let size2 = mul size size in
+	let (m, n) = get_first_zero (size, g) in
+	let v = pick_nat size2 in
+	let (Z, g') = insert m n (S v) g in
+	let True = correct_grid (size, g') in
+	(size,g')
+
+val solve (g:grid): grid =
+	branch
+		let True = solved g in
+		g
+	or
+		let g' = fill g in
+		solve g'
+	end
+
+
+val empty (n:nat): grid =
+	let n2=mul n n in
+	let range_n2 = range n2 in
+	let empty_line = map<nat,nat> (λ _ : nat → Z) range_n2 in
+	let array = map<nat, line> (λ _: nat → empty_line) range_n2 in
+	(n, array)
+
