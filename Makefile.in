@@ -20,7 +20,7 @@ TESTS = $(addprefix test/,$(shell ls test))
 
 NAME := necro-ml
 # WARNING : GIT TAG is prefixed with "v"
-VERSION := 2.5.2
+VERSION := 2.5.3
 TGZ := $(NAME)-v$(VERSION).tar.gz
 MD5TXT := $(TGZ).md5sum.txt
 
@@ -55,7 +55,6 @@ endif
 
 clean:
 	@rm -f *.cm[ioa] necroml test/*.cm[io] *.native  $(TGZ) $(MD5TXT) config.status config.log configure
-	@rm -f test/{arith{,_list},brainfuck,concurrent,implicits,lambda,lists{,_list},miniml,nat,options,pcf,while{,_amb}}.ml
 	@rm -rf autom4te.cache
 	@make clean -C test/SudoKu > /dev/null
 

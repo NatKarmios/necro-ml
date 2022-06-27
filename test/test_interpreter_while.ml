@@ -4,28 +4,26 @@ open While
 
 module SMap = Map.Make(String)
 
-module rec T: sig
-		type ident = string
-		type lit = int
-		type vint = int
-		type state = Unspec(Monads.ID)(T).value SMap.t
-	end = T
+module Input(M:MONAD) = struct
+	module rec T: sig
+			type ident = string
+			type lit = int
+			type vint = int
+			type state = Unspec(M)(T).value SMap.t
+		end = T
 
-
-module Input = struct
-	include Unspec(Monads.ID)(T)
-  let litToVal lit = Int lit
-  let read ident = fun state -> (SMap.find ident state, state)
-  let write (ident, value) = fun state ->
+	include Unspec(M)(T)
+  let litToVal lit = M.ret (Int lit)
+  let read ident = M.ret (fun state -> M.ret (SMap.find ident state, state))
+  let write (ident, value) = M.ret (fun state ->
     let new_state = SMap.add ident value state in
-    ((), new_state)
-  let add (a, b) = a + b
-  let eq (a, b) = if a = b then True else False
+    M.ret ((), new_state))
+  let add (a, b) = M.ret (a + b)
+  let eq (a, b) = M.ret (if a = b then True else False)
 end
 
-module InterpWhile = MakeInterpreter (Input)
+module InterpWhile = MakeInterpreter(Input(Monads.ID))
 
-open Input
 open InterpWhile
 
 let initial_state = SMap.empty

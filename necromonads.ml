@@ -8,6 +8,7 @@ module Queue:
 		val push: 'a * 'a queue -> 'a queue
 		val pop: 'a queue -> 'a * 'a queue
 		val append: 'a queue * 'a queue -> 'a queue
+		val map: ('a -> 'b) -> 'a queue -> 'b queue
 	end =
 struct
 	type 'a queue =
@@ -28,11 +29,15 @@ struct
 				end
 		end
 	let to_list {inbox;outbox} =
-		outbox @ List.rev inbox
+		outbox @ Stdlib.List.rev inbox
 	let of_list l =
 		{inbox = []; outbox = l}
 	let append (a, b) =
 		{b with inbox = (to_list a) @ b.inbox}
+	let map f {outbox;inbox} =
+		{
+			outbox = Stdlib.List.map f outbox;
+			inbox = Stdlib.List.map f inbox }
 end
 
 module type MONAD = sig
@@ -64,8 +69,8 @@ end
 
 let shuffle l =
 	let () = Random.self_init () in
-	let lrand = List.map (fun c -> (Random.bits (), c)) l in
-	List.sort compare lrand |> List.map snd
+	let lrand = Stdlib.List.map (fun c -> (Random.bits (), c)) l in
+	Stdlib.List.sort compare lrand |> Stdlib.List.map snd
 
 module Rand (M: MONAD) = struct
 	include M
@@ -150,7 +155,9 @@ module Bfs = struct
 				failwith "Impossible to evaluate any further"
 		(* Evaluation not over *)
 		| Bind (Ret x, f) -> f x
-		| Bind (Branch l, f) when Queue.is_empty l -> Branch (Queue.empty)
+		| Bind (Branch l, f) ->
+				let branches = Queue.map (fun x () -> Bind (x (), f)) l in
+				Branch branches
 		| Bind (x, f) -> Bind (eval_step x, f)
 		| Apply (f, x) -> f x
 		| Branch l ->
@@ -191,7 +198,9 @@ module BfsYield = struct
 				failwith "Impossible to evaluate any further"
 		(* Evaluation not over *)
 		| Bind (Ret x, f) -> f x
-		| Bind (Branch l, f) when Queue.is_empty l -> Branch Queue.empty
+		| Bind (Branch l, f) ->
+				let branches = Queue.map (fun x () -> Bind (x (), f)) l in
+				Branch branches
 		| Bind (x, f) -> Bind (eval_step x, f)
 		| Apply (f, x) -> f x
 		| Branch l ->

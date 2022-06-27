@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 2.5.3
+- Fix BFS monad (acted like ID)
+
 ## Version 2.5.2
 - Update necro-test
 
