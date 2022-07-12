@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 2.6
+- Undate to Necro Lib 0.9
+
 ## Version 2.5.3
 - Fix BFS monad (acted like ID)
 

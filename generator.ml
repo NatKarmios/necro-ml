@@ -78,8 +78,8 @@ let get_constr_sem sem ty: signature list =
 			end
 		in
 		begin match SMap.find_opt name ski'.ski_types with
-		| Some (_, _, None) -> assert false
-		| Some (_, _, Some x) -> x
+		| Some (_, _, _, None) -> assert false
+		| Some (_, _, _, Some x) -> x
 		| None -> assert false
 		end
 	in
@@ -106,7 +106,7 @@ let rec get_pattern sem p =
 			let cl =
 				begin match Util.SMap.find_opt ty ski.ski_types with
 				| None -> assert false
-				| Some (_, _, cl) -> cl
+				| Some (_, _, _, cl) -> cl
 				end
 			in
 			let cdef =
@@ -152,7 +152,7 @@ let rec get_term_of_term sem =
 			let cl =
 				begin match Util.SMap.find_opt ty ski.ski_types with
 				| None -> assert false
-				| Some (_, _, cl) -> cl
+				| Some (_, _, _, cl) -> cl
 				end
 			in
 			let cdef =
@@ -325,28 +325,23 @@ let get_term_definitions sem =
 (* returns [type t] for all unspecified types *)
 let (unspec_type_decl, unspec_type_decls_ski) =
 	(* prints the type's name with "type " before it *)
-	let type_with_comment (c, s) =
-		begin match s with
-		| Product _ | Variable _ | Alias _ | Arrow _ ->
-				assert false
-		| Base (_, s, _, args) ->
-				MTTypeDecl (c, List.map (fun _ -> None) args, s)
-		end
+	let type_with_comment (c, s, args) =
+		MTTypeDecl (c, List.map (fun _ -> None) args, s)
 	in
 	(begin fun sem ->
 		let ts =
 			sem.ss_types
-			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
+			|> Util.SMap.filter (fun _ (_, _, _, l) -> l = None)
 			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, ty, _)) -> (c, ty))
+			|> List.map (fun (x, (c, k, a, _)) -> (c, x, a))
 		in
 		List.map type_with_comment ts end,
 	begin fun ski ->
 		let ts =
 			ski.ski_types
-			|> Util.SMap.filter (fun _ (_, s,l) -> l = None)
+			|> Util.SMap.filter (fun _ (_, _, _, l) -> l = None)
 			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, ty, _)) -> (c, ty))
+			|> List.map (fun (x, (c, k, a, _)) -> (c, x, a))
 		in
 		List.map type_with_comment ts end
 	)
@@ -423,7 +418,7 @@ let (specified_types, spec_types_ski):
 			end
 		in
 		begin match Util.SMap.find_opt name ss.ss_types with
-		| Some (c, _, _) -> c
+		| Some (c, _, _, _) -> c
 		| None -> failwith "Internal error 1"
 		end
 	in
@@ -446,10 +441,11 @@ let (specified_types, spec_types_ski):
 	 (variant_type_decls @ record_type_decls) end,
 	begin fun ski ->
 	let get_constructors_and_fields_by_type ski =
-		Util.SMap.fold (fun _ (_, s,c) (lc, lf) ->
-			begin match s, c with
-			| Base (_, _, Variant, _), Some c -> (s,c) :: lc, lf
-			| Base (_, _, Record , _), Some c -> lc, (s,c) :: lf
+		Util.SMap.fold (fun n (_, k, a ,c) (lc, lf) ->
+			let s = Base (None, n, k, List.map (fun x -> Variable x) a) in
+			begin match k, c with
+			| Variant, Some c -> (s,c) :: lc, lf
+			| Record, Some c -> lc, (s,c) :: lf
 			| _, _ -> (lc, lf)
 			end) ski.ski_types ([], [])
 	in
@@ -462,7 +458,7 @@ let (specified_types, spec_types_ski):
 			end
 		in
 		begin match Util.SMap.find_opt name ski.ski_types with
-		| Some (c, _, _) -> c
+		| Some (c, _, _, _) -> c
 		| None -> failwith "Internal error 1"
 		end
 	in
