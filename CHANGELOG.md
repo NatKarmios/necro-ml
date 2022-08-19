@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 2.8.0.1
+- Fix error in dune file
+
 ## Version 2.8
 - Switch to dune
 

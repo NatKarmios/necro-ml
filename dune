@@ -1,4 +1,4 @@
-(library
+(executable
  (name necroml)
  (public_name necroml)
  (libraries necrolib)
