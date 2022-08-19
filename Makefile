@@ -6,7 +6,7 @@ TESTS = $(addprefix test/,$(shell ls test))
 
 NAME := necro-ml
 # WARNING : GIT TAG is prefixed with "v"
-VERSION := 2.8
+VERSION := 2.8.0.1
 TGZ := $(NAME)-v$(VERSION).tar.gz
 MD5TXT := $(TGZ).md5sum.txt
 OPAM_NAME := necroml
@@ -51,6 +51,6 @@ release:
 	make new_version
 	make opam_update
 	cd ../opam-repository; \
-		git add $(OPAM_FILE) && git commit -m "Push new Necro ML version"; git push
+		git add packages/necroml && git commit -am "Push new Necro ML version" && git push
 
 .PHONY: opam_update new_version release nothing

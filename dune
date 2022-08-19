@@ -1,6 +1,7 @@
 (executable
  (name necroml)
  (public_name necroml)
+ (package necroml)
  (libraries necrolib)
  (modules_without_implementation mlast)
 )
