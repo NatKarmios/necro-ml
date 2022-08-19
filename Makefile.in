@@ -140,16 +140,10 @@ test: necroml Makefile $(TESTS)
 	@make test -C test/SudoKu > /dev/null
 
 opam_install_necroml : necroml necromonads.cma
-ifeq ($(OPAM),opam)
-  ifneq ($(OPAMBINDIR),)
-    ifneq ($(NECROLIB), no)
 	@cp necroml $(OPAMBINDIR)/necroml
 	@mkdir $(OPAMLIBDIR)/necromonads
 	@echo 'archive(byte) = "necromonads.cma"' > $(OPAMLIBDIR)/necromonads/META
 	@cp necromonads.cma necromonads.cmi $(OPAMLIBDIR)/necromonads
-    endif
-  endif
-endif
 
 opam_remove_necroml :
 	@rm -f  $(OPAMBINDIR)/necroml
