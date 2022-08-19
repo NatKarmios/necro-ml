@@ -1,7 +1,10 @@
 # Changelog
 
+## Version 2.7
+- Update to Necro Lib 0.10 (without switching to dune)
+
 ## Version 2.6
-- Undate to Necro Lib 0.9
+- Update to Necro Lib 0.9
 
 ## Version 2.5.3
 - Fix BFS monad (acted like ID)

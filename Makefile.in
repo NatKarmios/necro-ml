@@ -20,7 +20,7 @@ TESTS = $(addprefix test/,$(shell ls test))
 
 NAME := necro-ml
 # WARNING : GIT TAG is prefixed with "v"
-VERSION := 2.5.3
+VERSION := 2.7
 TGZ := $(NAME)-v$(VERSION).tar.gz
 MD5TXT := $(TGZ).md5sum.txt
 
@@ -44,14 +44,8 @@ necromonads.cma:
 	ocamlc -c necromonads.ml
 	ocamlc -a necromonads.cmo -o necromonads.cma
 
-# This target manage standalone local install but path to necrolib is asked
 necroml: mlast.mli mlprinter.ml generator.ml necroml.ml
-ifeq ($(NECROLIB),no)
-	@read -p "Please fill path to NECROLIB:" g;\
-	ocamlc -I $$g/main necro.cma mlast.mli mlprinter.ml generator.ml necroml.ml -o necroml
-else
-	@ocamlfind ocamlc -package necro -linkpkg necro.cma mlast.mli mlprinter.ml generator.ml necroml.ml -o necroml
-endif
+	@ocamlfind ocamlc -package necrolib -linkpkg necro.cma mlast.mli mlprinter.ml generator.ml necroml.ml -o necroml
 
 clean:
 	@rm -f *.cm[ioa] necroml test/*.cm[io] *.native  $(TGZ) $(MD5TXT) config.status config.log configure

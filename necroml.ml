@@ -82,12 +82,12 @@ let () =
 		| a :: q -> if List.for_all ((=) a) q then Some a else usage ()
 		end
 	in
-	let sem = Necro.parse_and_type d f |> Skeleton.lss_to_ss in
+	let sem = Necro.parse_and_type d f |> Necro.Skeleton.lss_to_ss in
 	let ski =
 		begin match ski_file with
 		| Some s ->
-				let ski = Necro.parse_and_type_interface d s |> Skeleton.lski_to_ski in
-				let () = Skeleton.match_ski_ss s ski f sem in
+				let ski = Necro.parse_and_type_interface d s |> Necro.Skeleton.lski_to_ski in
+				let () = Necro.Skeleton.match_ski_ss s ski f sem in
 				ski
 		| None -> Necro.Skeleton.ski_of_ss sem
 		end
@@ -95,5 +95,5 @@ let () =
 	let l = List.map get_basename d in
 	let ml_ast = wrap3 Generator.generate_interpreter l sem ski in
 	let result = Mlprinter.print_ast ml_ast in
-	Util.print_in_file result output_file
+	Necro.Util.print_in_file result output_file
 
