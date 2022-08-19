@@ -1,0 +1,7 @@
+(library
+ (name necroml)
+ (public_name necroml)
+ (libraries necrolib)
+ (modules_without_implementation mlast)
+)
+

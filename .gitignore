@@ -1,10 +1,5 @@
-necroml
-*.native
-*.cm[ioa]
-Makefile
 config.log
-config.status
-configure
-autom4te.cache/
 *.tar.gz
 *.tar.gz.md5sum.txt
+_build
+*.opam

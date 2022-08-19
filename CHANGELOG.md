@@ -1,5 +1,11 @@
 # Changelog
 
+## Version 2.8
+- Switch to dune
+
+## Version 2.7.1
+- Fix makefile
+
 ## Version 2.7
 - Update to Necro Lib 0.10 (without switching to dune)
 

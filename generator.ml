@@ -46,7 +46,7 @@ let rec get_type (s: necro_type) =
 				MLTyFrom (Some "M", "t", [get_type s2]))
 	end
 
-let rec get_from_ski from ski =
+let get_from_ski from ski =
 	begin match from with
 	| None -> ski
 	| Some a ->
@@ -244,7 +244,7 @@ and get_term_of_skel sem s =
 						)
 					)
 			end
-	| LetIn (Some (k, from, m, ta, _), p, s1, s2)
+	| LetIn (Some (_, from, m, _, _), p, s1, s2)
 		when Skeleton.is_exhaustive (get_constr_sem sem) (Skeleton.pattern_typ p) [p] ->
 			begin match s1 with
 			| Return v1 ->
@@ -266,7 +266,7 @@ and get_term_of_skel sem s =
 						)
 					)
 			end
-	| LetIn (Some (k, from, m, ta, _), p, s1, s2) ->
+	| LetIn (Some (_, from, m, _, _), p, s1, s2) ->
 			MLTLetStarIn (
 				MLPVar !tmp,
 				get_term_of_skel sem s1,
@@ -311,7 +311,6 @@ let get_term_definitions sem =
 		|> Util.SMap.bindings
 		|> List.filter_map (begin function
 			| (name, (c, ta, ty, Some t)) ->
-					let open Util in
 					Some (name, ta, ty, t, c)
 			| _ -> None
 			end)
@@ -333,7 +332,7 @@ let (unspec_type_decl, unspec_type_decls_ski) =
 			sem.ss_types
 			|> Util.SMap.filter (fun _ (_, _, _, l) -> l = None)
 			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, k, a, _)) -> (c, x, a))
+			|> List.map (fun (x, (c, _, a, _)) -> (c, x, a))
 		in
 		List.map type_with_comment ts end,
 	begin fun ski ->
@@ -341,7 +340,7 @@ let (unspec_type_decl, unspec_type_decls_ski) =
 			ski.ski_types
 			|> Util.SMap.filter (fun _ (_, _, _, l) -> l = None)
 			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, k, a, _)) -> (c, x, a))
+			|> List.map (fun (x, (c, _, a, _)) -> (c, x, a))
 		in
 		List.map type_with_comment ts end
 	)
@@ -355,7 +354,7 @@ let get_term_signatures ~all sem =
 	in
 	let all_sigs =
 		sem.ss_terms
-		|> (if all then Util.id else Util.SMap.filter (fun a (_, _, _, t) -> t = None))
+		|> (if all then Util.id else Util.SMap.filter (fun _ (_, _, _, t) -> t = None))
 		|> Util.SMap.bindings
 	in
 	List.map get_term_sig all_sigs
@@ -384,7 +383,7 @@ let get_terms_not_implemented sem =
 	in
 	let terms =
 		sem.ss_terms
-		|> Util.SMap.filter (fun a (_, _, ty, t) ->
+		|> Util.SMap.filter (fun _ (_, _, ty, t) ->
 				begin match t, Skeleton.unalias ty with
 				| None, Arrow _ -> true | _ -> false
 				end)
@@ -538,7 +537,7 @@ let types_module_type sem =
 	let comment = " The unspecified types " in
 	ModuleType (Some comment, "TYPES", [MTBlock (unspec_type_decl sem)])
 
-let monad_module_type sem =
+let monad_module_type _sem =
 	let com = " The interpretation monad " in
 	let def =
 		let t a = MLTyBase ("t", [MLTyVar a]) in
@@ -558,7 +557,7 @@ let monad_module_type sem =
 	ModuleType (Some com, "MONAD", [MTBlock def])
 
 let get_module_args sem: modargs =
-	let print_include (n, sem) =
+	let print_include (n, _sem) =
 		let name = String.capitalize_ascii n in
 		(name, [name; "INTERPRETER"], [("M",["F";"M"])])
 	in
@@ -572,7 +571,7 @@ let get_opens sem: module_tld list =
 
 let get_applys apply_max =
 	let mkvar x = MLTVar (None, x) in
-	let rec x2xn n =
+	let x2xn n =
 		let () = assert (n >= 2) in
 		List.init (n-1) (fun i -> Format.sprintf "arg%d" (i+2))
 	in
@@ -647,7 +646,7 @@ let unspec_functor sem =
 	in
 	Functor (Some com, "Unspec", args, body)
 
-let interpreter_module_type sem ski =
+let interpreter_module_type _sem ski =
 	let comment = " The module type for interpreters " in
 	let includes =
 		List.map (fun name ->
@@ -665,7 +664,7 @@ let interpreter_module_type sem ski =
 	in
 	ModuleType (Some comment, "INTERPRETER", body)
 
-let build_map includes ss =
+let build_map _includes ss =
 	let rec aux map (i, (s, _)) =
 		let open Util in
 		let incl = SMap.bindings s.ski_includes in

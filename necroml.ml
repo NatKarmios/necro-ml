@@ -62,7 +62,7 @@ let () =
 		begin match files with
 		| [] -> usage ()
 		| a :: [] when List.mem Depend opt -> a, Necro.find_deps a
-		| a :: _ when List.mem Depend opt -> usage ()
+		| _ :: _ when List.mem Depend opt -> usage ()
 		| a :: q -> a, List.rev q
 		end
 	in

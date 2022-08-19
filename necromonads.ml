@@ -81,7 +81,7 @@ end
 module List = struct
 	type 'a t = 'a list
 	let ret x = [x]
-	let rec branch l =
+	let branch l =
 		Stdlib.List.concat (Stdlib.List.map (fun f -> f ()) l)
 	let fail _ = []
 	let rec union_two l = function
@@ -94,7 +94,7 @@ module List = struct
 	let apply f x = f x
 	let extract x =
 		begin match x with
-		| a :: q -> a
+		| a :: _ -> a
 		| [] -> failwith "No result"
 		end
 end
@@ -106,7 +106,7 @@ module Cont = struct
 	let ret (x: 'a) = fun (k:'a cont) fcont -> k x fcont
 	let bind (x: 'a t) (f: 'a -> 'b t) =
 		fun k fcont -> x (fun v fcont' -> f v k fcont') fcont
-	let fail s = fun k fcont -> fcont s
+	let fail s = fun _k fcont -> fcont s
 	let rec branch l = fun k fcont ->
 		begin match l with
 		| [] -> fcont "No branch matches"
@@ -126,7 +126,7 @@ module ContPoly = struct
 	let ret (x: 'a) = { cont= fun k fcont -> k x fcont }
 	let bind (x: 'a t) (f: 'a -> 'b t) : 'b t =
 		{ cont = fun k fcont -> x.cont (fun v fcont' -> (f v).cont k fcont') fcont }
-	let fail s = { cont = fun k fcont -> fcont s }
+	let fail s = { cont = fun _k fcont -> fcont s }
 	let rec branch l = { cont = fun k fcont ->
 		match l with
 		| [] -> fcont "No branch matches"
@@ -149,7 +149,7 @@ module Bfs = struct
 	let rec eval_step : type a. a t -> a t =
 		begin function
 		(* Evaluation over *)
-		| Ret x ->
+		| Ret _ ->
 				failwith "Impossible to evaluate any further"
 		| Branch l when Queue.is_empty l ->
 				failwith "Impossible to evaluate any further"
@@ -174,6 +174,51 @@ module Bfs = struct
 		| Branch l when Queue.is_empty l -> failwith "No result"
 		| y -> let y' = eval_step y in eval y'
 		end
+	let apply f x = Apply (f, x)
+	let extract x = eval x
+end
+
+module BfsOptim = struct
+	type 'a t =
+		| Ret : 'a -> 'a t
+		| Bind : ('b t * ('b -> 'a t)) -> 'a t
+		| Branch: (unit -> 'a t) Queue.queue -> 'a t
+		| Apply : ('a -> 'b t) * 'a -> 'b t
+	let ret x = Ret x
+	let branch l = Branch (Queue.of_list l)
+	let fail _ = branch []
+	let bind x f = Bind (x, f)
+	let rec eval_step: type a. int -> a t -> a t =
+		fun n -> if n = 0 then fun x -> x else
+		begin function
+		(* Evaluation over *)
+		| Ret x -> Ret x
+		| Branch l when Queue.is_empty l -> Branch l
+		(* Evaluation not over *)
+		| Bind (Ret x, f) -> eval_step (n-1) (f x)
+		| Bind (Branch l, f) ->
+				let branches = Queue.map (fun x () -> Bind (x (), f)) l in
+				Branch branches
+		| Bind (x, f) -> eval_step (n-1) (Bind (eval_step 1 x, f))
+		| Apply (f, x) -> eval_step (n-1) (f x)
+		| Branch l ->
+				let (x, q) = Queue.pop l in
+				begin match eval_step (n-1) (x ()) with
+				| Ret x -> Ret x
+				| Branch l' -> Branch (Queue.append (q, l'))
+				| w ->
+						Branch (Queue.push ((fun () -> eval_step 1 w), q))
+				end
+		end
+	let rec eval_aux: type a. int -> a t -> a =
+		fun n ->
+		begin function
+		| Ret x -> x
+		| Branch l when Queue.is_empty l -> failwith "No result"
+		| y -> let y' = eval_step n y in eval_aux (n+1) y'
+		end
+	let eval: type a. a t -> a =
+		fun x -> eval_aux 1 x
 	let apply f x = Apply (f, x)
 	let extract x = eval x
 end

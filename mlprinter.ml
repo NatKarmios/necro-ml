@@ -40,9 +40,9 @@ let print_type_var ff v =
 
 let rec monoline v =
 	begin match v with
-	| MLTVar (f, name) -> true
-	| MLTConstr (f, c, None) -> true
-	| MLTConstr (f, c, Some t) -> monoline t
+	| MLTVar _ -> true
+	| MLTConstr (_f, _c, None) -> true
+	| MLTConstr (_f, _c, Some t) -> monoline t
 	| MLTTop -> true
 	| MLTTuple [] | MLTTuple [_] -> assert false
 	| MLTTuple tl -> List.for_all monoline tl
@@ -51,15 +51,15 @@ let rec monoline v =
 			List.for_all (fun (_, _, v) -> monoline v) fl && monoline t
 	| MLTFunc _ -> false
 	| MLTFunction _ -> false
-	| MLTField (t, f, n) -> monoline t
+	| MLTField (t, _f, _n) -> monoline t
 	| MLTApp (t, tl) -> List.for_all monoline (t::tl)
-	| MLTLetIn (p, bound, body) -> false
-	| MLTLetStarIn (p, bound, body) -> false
-	| MLTMatchWith (t, l) -> false
-	| MLTString s -> true
+	| MLTLetIn _ -> false
+	| MLTLetStarIn _ -> false
+	| MLTMatchWith _ -> false
+	| MLTString _ -> true
 	| MLTList [] -> true
 	| MLTList [t] -> monoline t
-	| MLTList l -> false
+	| MLTList _ -> false
 	end
 
 let rec print_type ff ty =
