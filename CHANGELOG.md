@@ -1,6 +1,6 @@
 # Changelog
 
-## Version 2.8.0.1
+## Version 2.8.1
 - Update to Necro Lib 0.10.1
 
 ## Version 2.8.0.1
