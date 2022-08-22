@@ -1,6 +1,9 @@
 # Changelog
 
 ## Version 2.8.0.1
+- Update to Necro Lib 0.10.1
+
+## Version 2.8.0.1
 - Fix error in dune file
 
 ## Version 2.8

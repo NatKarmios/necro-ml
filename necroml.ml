@@ -9,7 +9,6 @@ let wrap f x =
 		Printf.eprintf "Fatal error: %s%s\n" msg stack ;
 		exit 1
 let wrap2 f x y = wrap (wrap f x) y
-let wrap3 f x y z = wrap (wrap2 f x y) z
 
 (* Print usage in stderr and exit *)
 let usage () =
@@ -73,27 +72,9 @@ let () =
 		| a :: q -> if List.for_all ((=) a) q then Some a else usage ()
 		end
 	in
-	let ski_file =
-		let l = List.filter_map (function | Interface sk -> Some sk | _ -> None) opt in
-		begin match l with
-		| [] ->
-				let name = Filename.remove_extension f ^ ".ski" in
-				if Sys.file_exists name then Some name else None
-		| a :: q -> if List.for_all ((=) a) q then Some a else usage ()
-		end
-	in
 	let sem = Necro.parse_and_type d f |> Necro.Skeleton.lss_to_ss in
-	let ski =
-		begin match ski_file with
-		| Some s ->
-				let ski = Necro.parse_and_type_interface d s |> Necro.Skeleton.lski_to_ski in
-				let () = Necro.Skeleton.match_ski_ss s ski f sem in
-				ski
-		| None -> Necro.Skeleton.ski_of_ss sem
-		end
-	in
 	let l = List.map get_basename d in
-	let ml_ast = wrap3 Generator.generate_interpreter l sem ski in
+	let ml_ast = wrap2 Generator.generate_interpreter l sem in
 	let result = Mlprinter.print_ast ml_ast in
 	Necro.Util.print_in_file result output_file
 

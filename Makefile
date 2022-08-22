@@ -42,7 +42,7 @@ opam_update :
 	@rm -f $(TGZ) $(MD5TXT)
 	@wget -q $(GIT_RELEASE)
 	@md5sum $(TGZ) > $(MD5TXT)
-	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat $(MD5TXT) | cut -d" " -f 1)'"|' opam
+	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat $(MD5TXT) | cut -d" " -f 1)'"|' necroml.opam.template
 	@dune build
 	@mkdir -p $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/
 	@cp necroml.opam $(OPAM_REPO_GIT)/$(OPAM_FILE)

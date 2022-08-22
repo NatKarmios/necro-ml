@@ -46,20 +46,20 @@ let rec get_type (s: necro_type) =
 				MLTyFrom (Some "M", "t", [get_type s2]))
 	end
 
-let get_from_ski from ski =
+let get_from_ss from ss =
 	begin match from with
-	| None -> ski
+	| None -> ss
 	| Some a ->
-			begin match Util.SMap.find_opt a ski.ski_includes with
+			begin match Util.SMap.find_opt a ss.ss_includes with
 			| None -> assert false
-			| Some (ski, _) -> ski
+			| Some (ss, _) -> ss
 			end
 	end
 
 let get_constr_sem sem ty: signature list =
 	let open Skeleton in
 	let open Util in
-	let get_constructors s ski =
+	let get_constructors s ss =
 		let from, name =
 			let s = unalias_rec s in
 			begin match s with
@@ -67,23 +67,14 @@ let get_constr_sem sem ty: signature list =
 			| _ -> assert false
 			end
 		in
-		let ski' =
-			begin match from with
-			| None -> ski
-			| Some a ->
-					begin match SMap.find_opt a ski.ski_includes with
-					| None -> assert false
-					| Some (ski', _) -> ski'
-					end
-			end
-		in
-		begin match SMap.find_opt name ski'.ski_types with
+		let ss' = get_from_ss from ss in
+		begin match SMap.find_opt name ss'.ss_types with
 		| Some (_, _, _, None) -> assert false
 		| Some (_, _, _, Some x) -> x
 		| None -> assert false
 		end
 	in
-	get_constructors ty (ski_of_ss sem)
+	get_constructors ty sem
 
 (* get an mlpattern out of a skel pattern *)
 let rec get_pattern sem p =
@@ -102,9 +93,9 @@ let rec get_pattern sem p =
 				| _ -> assert false
 				end
 			in
-			let ski = get_from_ski f (Skeleton.ski_of_ss sem) in
+			let ss = get_from_ss f sem in
 			let cl =
-				begin match Util.SMap.find_opt ty ski.ski_types with
+				begin match Util.SMap.find_opt ty ss.ss_types with
 				| None -> assert false
 				| Some (_, _, _, cl) -> cl
 				end
@@ -148,9 +139,9 @@ let rec get_term_of_term sem =
 				| _ -> assert false
 				end
 			in
-			let ski = get_from_ski f (Skeleton.ski_of_ss sem) in
+			let ss = get_from_ss f sem in
 			let cl =
-				begin match Util.SMap.find_opt ty ski.ski_types with
+				begin match Util.SMap.find_opt ty ss.ss_types with
 				| None -> assert false
 				| Some (_, _, _, cl) -> cl
 				end
@@ -322,28 +313,16 @@ let get_term_definitions sem =
 
 
 (* returns [type t] for all unspecified types *)
-let (unspec_type_decl, unspec_type_decls_ski) =
+let unspec_type_decl sem =
 	(* prints the type's name with "type " before it *)
 	let type_with_comment (c, s, args) =
 		MTTypeDecl (c, List.map (fun _ -> None) args, s)
 	in
-	(begin fun sem ->
-		let ts =
-			sem.ss_types
-			|> Util.SMap.filter (fun _ (_, _, _, l) -> l = None)
-			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, _, a, _)) -> (c, x, a))
-		in
-		List.map type_with_comment ts end,
-	begin fun ski ->
-		let ts =
-			ski.ski_types
-			|> Util.SMap.filter (fun _ (_, _, _, l) -> l = None)
-			|> Util.SMap.bindings
-			|> List.map (fun (x, (c, _, a, _)) -> (c, x, a))
-		in
-		List.map type_with_comment ts end
-	)
+	sem.ss_types
+	|> Util.SMap.filter (fun _ (_, _, _, l) -> l = None)
+	|> Util.SMap.bindings
+	|> List.map (fun (x, (c, _, a, _)) -> (c, x, a))
+	|> List.map type_with_comment
 
 
 (* Prints [val t: ty] for all unspecified terms *)
@@ -355,17 +334,6 @@ let get_term_signatures ~all sem =
 	let all_sigs =
 		sem.ss_terms
 		|> (if all then Util.id else Util.SMap.filter (fun _ (_, _, _, t) -> t = None))
-		|> Util.SMap.bindings
-	in
-	List.map get_term_sig all_sigs
-
-let get_term_signatures_ski ski =
-	(* Prints the signature of a term *)
-	let get_term_sig (name, (_, c, _, ty)) =
-		MTValDecl (c, name, get_type ty)
-	in
-	let all_sigs =
-		ski.ski_terms
 		|> Util.SMap.bindings
 	in
 	List.map get_term_sig all_sigs
@@ -393,8 +361,7 @@ let get_terms_not_implemented sem =
 
 (** Prints the specified types. If comm is set to true, then also print the
 r   special comments *)
-let (specified_types, spec_types_ski):
-	(comm:bool -> 'a -> type_def list) * ('b -> type_def list) =
+let specified_types ~comm ss: type_def list =
 	let constructor c =
 		begin match c.s_input_type with
 		| Product [] -> (c.s_name, None, c.s_comment)
@@ -405,7 +372,6 @@ let (specified_types, spec_types_ski):
 	let extract =
 		List.map (begin function | Variable v -> v | _ -> assert false end)
 	in
-	(begin fun ~comm ss ->
 	let const = Skeleton.get_constructors_by_type ss in
 	let fields = Skeleton.get_fields_by_type ss in
 	let get_comm base_type =
@@ -437,59 +403,13 @@ let (specified_types, spec_types_ski):
 			| _ -> assert false
 			end) fields
 	in
-	 (variant_type_decls @ record_type_decls) end,
-	begin fun ski ->
-	let get_constructors_and_fields_by_type ski =
-		Util.SMap.fold (fun n (_, k, a ,c) (lc, lf) ->
-			let s = Base (None, n, k, List.map (fun x -> Variable x) a) in
-			begin match k, c with
-			| Variant, Some c -> (s,c) :: lc, lf
-			| Record, Some c -> lc, (s,c) :: lf
-			| _, _ -> (lc, lf)
-			end) ski.ski_types ([], [])
-	in
-	let const, fields = get_constructors_and_fields_by_type ski in
-	let get_comm base_type =
-		let name =
-			begin match base_type with
-			| Base (_, name, _, _) -> name
-			| _ -> assert false
-			end
-		in
-		begin match Util.SMap.find_opt name ski.ski_types with
-		| Some (c, _, _, _) -> c
-		| None -> failwith "Internal error 1"
-		end
-	in
-	let variant_type_decls =
-		List.map (fun (ty, c) ->
-			begin match ty with
-			| Base (None, name, Variant, args) ->
-					TDVariant (get_comm ty, extract args, name, List.map constructor c)
-			| _ -> assert false
-			end) const
-	in
-	let record_type_decls =
-		List.map (fun (ty, f) ->
-			begin match ty with
-			| Base (None, name, Record, args) ->
-					TDRecord (get_comm ty, extract args, name, List.map field f)
-			| _ -> assert false
-			end) fields
-	in
-	(variant_type_decls @ record_type_decls) end)
+	 (variant_type_decls @ record_type_decls)
 
 let get_aliases ss: type_def list =
 	let get_alias (name, (c, ta, ty)) =
 		TDAlias (c, ta, name, get_type ty)
 	in
 	List.map get_alias (Util.SMap.bindings ss.ss_aliases)
-
-let get_aliases_ski ski =
-	let get_alias (name, (c, ta, ty)) =
-		TDAlias (c, ta, name, get_type ty)
-	in
-	List.map get_alias (Util.SMap.bindings ski.ski_aliases)
 
 (* Function to extract "with module _ = _" *)
 let with_modules l =
@@ -646,7 +566,7 @@ let unspec_functor sem =
 	in
 	Functor (Some com, "Unspec", args, body)
 
-let interpreter_module_type _sem ski =
+let interpreter_module_type sem =
 	let comment = " The module type for interpreters " in
 	let includes =
 		List.map (fun name ->
@@ -657,9 +577,9 @@ let interpreter_module_type _sem ski =
 	let body =
 		MTModule ("M", ["MONAD"], [])
 		:: MTBlock includes
-		:: MTBlock (unspec_type_decls_ski ski)
-		:: MTTypeDefs (spec_types_ski ski @ get_aliases_ski ski)
-		:: MTBlock (get_term_signatures_ski ski)
+		:: MTBlock (unspec_type_decl sem)
+		:: MTTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
+		:: MTBlock (get_term_signatures ~all:true sem)
 		:: []
 	in
 	ModuleType (Some comment, "INTERPRETER", body)
@@ -667,15 +587,15 @@ let interpreter_module_type _sem ski =
 let build_map _includes ss =
 	let rec aux map (i, (s, _)) =
 		let open Util in
-		let incl = SMap.bindings s.ski_includes in
+		let incl = SMap.bindings s.ss_includes in
 		let map = SMap.add i (List.map fst incl) map in
 		List.fold_left aux map incl
 	in
-	let () = dep_map := aux Util.SMap.empty ("this", (Skeleton.ski_of_ss ss, true)) in
+	let () = dep_map := aux Util.SMap.empty ("this", (ss, true)) in
 	()
 
 (* writes the interpreter generator modules to stdout *)
-let generate_interpreter includes sem ski: ast =
+let generate_interpreter includes sem: ast =
 	let rec apply_max =
 		begin function
 		| TFunc (_, s) -> apply_max_skel s
@@ -713,8 +633,8 @@ let generate_interpreter includes sem ski: ast =
 	let () = all_includes := includes in
 	let () = build_map includes sem in
 	let () = tmp := Util.fresh ok !tmp in
-	let (sem,ski) =
-		Skeleton.protect_ss_and_ski necro_ocaml_keywords (sem,ski)
+	let sem =
+		Skeleton.protect_ss necro_ocaml_keywords sem
 	in
 	let comm = Comment " This file was automatically generated using necroml
 	See https://gitlab.inria.fr/skeletons/necro-ml/ for more informations " in
@@ -724,7 +644,7 @@ let generate_interpreter includes sem ski: ast =
 		; monad_module_type sem (* module type MONAD *)
 		; unspec_module_type sem (* module type UNSPEC *)
 		; unspec_functor sem (* module Unspec (M:MONAD) (T:TYPES) *)
-		; interpreter_module_type sem ski (* module type INTERPRETER *)
+		; interpreter_module_type sem (* module type INTERPRETER *)
 		; makeinterpreter_functor apply_max sem (* module MakeInterpreter (F: UNSPEC) …*)
 		]
 	in
