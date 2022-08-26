@@ -1,7 +1,15 @@
 (** * Auxiliary functions **)
+let give_version () =
+	Printf.printf "Necro ML, version: %s\n"
+	(match Build_info.V1.version () with
+	 | None -> "n/a"
+	 | Some v -> Build_info.V1.Version.to_string v);
+	 exit 0
+
 
 (** Wrap a function call to make the whole program fail with the right error code if an exception happens. **)
 let wrap f x =
+	let () = Printexc.record_backtrace true in
 	try f x
 	with e ->
 		let stack = Printexc.get_backtrace () in
@@ -18,6 +26,7 @@ let usage () =
 	the dependencies must precede in the list except if the -d option \
 	is given.\n\n\
 	Options:\n\
+	\t-v / --version\tPrint version and exit.\n\
 	\t-d / --find-deps\tOnly one file must be given. The dependencies are then \
 	looked for in the cwd, and in the path of the given file.\n\
 	\t-i [FILE]/ --interface [FILE]\tGet the given skeletal interface to be the
@@ -36,6 +45,8 @@ let parse l =
 		begin match l with
 		| [] ->
 				(accu_files, accu_options)
+		| "-v" :: _ | "--version" :: _ ->
+				give_version ()
 		| "-d" :: q | "--find-deps" :: q ->
 				parse accu_files (Depend :: accu_options) q
 		| "-o" :: [] | "--output" :: [] -> usage ()

@@ -1,5 +1,9 @@
 # Changelog
 
+## Version 2.9
+- Update to Necro Lib 0.11
+- add a `--version` option
+
 ## Version 2.8.1
 - Update to Necro Lib 0.10.1
 

@@ -35,8 +35,7 @@ let convert_from from =
 (* Translate a type into its OCaml embedding *)
 let rec get_type (s: necro_type) =
 	begin match s with
-		| Alias (from, name, ta, _)
-		| Base (from, name, _, ta) ->
+		| UserType (from, name, _, ta) ->
 				MLTyFrom (convert_from from, name, List.map get_type ta)
 		| Variable s -> MLTyVar s
 		| Product [] -> MLTyUnit
@@ -56,21 +55,21 @@ let get_from_ss from ss =
 			end
 	end
 
-let get_constr_sem sem ty: signature list =
+let get_constr_sem sem ty: constructor_signature list =
 	let open Skeleton in
 	let open Util in
 	let get_constructors s ss =
 		let from, name =
-			let s = unalias_rec s in
+			let s = unalias_rec ss s in
 			begin match s with
-			| Base (from, name, _, _) -> from, name
+			| UserType (from, name, _, _) -> from, name
 			| _ -> assert false
 			end
 		in
 		let ss' = get_from_ss from ss in
 		begin match SMap.find_opt name ss'.ss_types with
-		| Some (_, _, _, None) -> assert false
-		| Some (_, _, _, Some x) -> x
+		| Some (_, TDVariant (_, cl)) -> cl
+		| Some _ -> raise Util.InternalError
 		| None -> assert false
 		end
 	in
@@ -88,25 +87,25 @@ let rec get_pattern sem p =
 			(* if input type for constructor ty is () then the () is ignored. But if
 				 it is polymorphic, then OCaml expects the () to be present *)
 			let f, ty =
-				begin match Skeleton.unalias ty with
-				| Base (f, ty, _, _) -> f, ty
+				begin match Skeleton.unalias sem ty with
+				| UserType (f, ty, _, _) -> f, ty
 				| _ -> assert false
 				end
 			in
 			let ss = get_from_ss f sem in
 			let cl =
 				begin match Util.SMap.find_opt ty ss.ss_types with
-				| None -> assert false
-				| Some (_, _, _, cl) -> cl
+				| Some (_, TDVariant (_, cl)) -> cl
+				| _ -> raise Util.InternalError
 				end
 			in
 			let cdef =
-				begin match List.find_opt (fun cs -> cs.s_name = c) (Option.get cl) with
+				begin match List.find_opt (fun cs -> cs.cs_name = c) cl with
 				| Some cdef -> cdef
 				| None -> assert false
 				end
 			in
-			let input = cdef.s_input_type in
+			let input = cdef.cs_input_type in
 			if input = Product [] then
 				MLPConstr (convert_from from, c, None)
 			else
@@ -134,25 +133,25 @@ let rec get_term_of_term sem =
 			(* if input type for constructor ty is () then the () is ignored. But if
 				 it is polymorphic, then OCaml expects the () to be present *)
 			let f, ty =
-				begin match Skeleton.unalias ty with
-				| Base (f, ty, _, _) -> f, ty
+				begin match Skeleton.unalias sem ty with
+				| UserType (f, ty, _, _) -> f, ty
 				| _ -> assert false
 				end
 			in
 			let ss = get_from_ss f sem in
 			let cl =
 				begin match Util.SMap.find_opt ty ss.ss_types with
-				| None -> assert false
-				| Some (_, _, _, cl) -> cl
+				| Some (_, TDVariant (_, cl)) -> cl
+				| _ -> assert false
 				end
 			in
 			let cdef =
-				begin match List.find_opt (fun cs -> cs.s_name = c) (Option.get cl) with
+				begin match List.find_opt (fun cs -> cs.cs_name = c) cl with
 				| Some cdef -> cdef
 				| None -> assert false
 				end
 			in
-			let input = cdef.s_input_type in
+			let input = cdef.cs_input_type in
 			if input = Product [] then
 				MLTConstr (convert_from from, c, None)
 			else
@@ -163,7 +162,7 @@ let rec get_term_of_term sem =
 	| TTuple tl ->
 			MLTTuple (List.map (get_term_of_term sem) tl)
 	| TFunc (p, s) ->
-			if Skeleton.is_exhaustive (get_constr_sem sem) (Skeleton.pattern_typ p) [p] then
+			if Skeleton.is_exhaustive sem (Skeltypes.pattern_typ p) [p] then
 				MLTFunc (get_pattern sem p, get_term_of_skel sem s)
 			else
 				MLTFunction (
@@ -205,7 +204,7 @@ and get_term_of_skel sem s =
 				List.map (get_term_of_term sem) q
 			)
 	| LetIn (None, p, s1, s2) ->
-		if Skeleton.is_exhaustive (get_constr_sem sem) (Skeleton.pattern_typ p) [p]
+		if Skeleton.is_exhaustive sem (Skeltypes.pattern_typ p) [p]
 		then
 			MLTLetStarIn (
 				get_pattern sem p,
@@ -236,7 +235,7 @@ and get_term_of_skel sem s =
 					)
 			end
 	| LetIn (Some (_, from, m, _, _), p, s1, s2)
-		when Skeleton.is_exhaustive (get_constr_sem sem) (Skeleton.pattern_typ p) [p] ->
+		when Skeleton.is_exhaustive sem (Skeltypes.pattern_typ p) [p] ->
 			begin match s1 with
 			| Return v1 ->
 					MLTApp (
@@ -315,14 +314,14 @@ let get_term_definitions sem =
 (* returns [type t] for all unspecified types *)
 let unspec_type_decl sem =
 	(* prints the type's name with "type " before it *)
-	let type_with_comment (c, s, args) =
-		MTTypeDecl (c, List.map (fun _ -> None) args, s)
+	let type_with_comment (com, typename, args) =
+		MTTypeDecl (com, List.init args (fun _ -> None), typename)
 	in
 	sem.ss_types
-	|> Util.SMap.filter (fun _ (_, _, _, l) -> l = None)
+	|> Util.SMap.filter_map (fun _ (com, td) ->
+			begin match td with TDUnspec i -> Some (com, i) | _ -> None end)
 	|> Util.SMap.bindings
-	|> List.map (fun (x, (c, _, a, _)) -> (c, x, a))
-	|> List.map type_with_comment
+	|> List.map (fun (x, (c, i)) -> type_with_comment (c, x, i))
 
 
 (* Prints [val t: ty] for all unspecified terms *)
@@ -352,7 +351,7 @@ let get_terms_not_implemented sem =
 	let terms =
 		sem.ss_terms
 		|> Util.SMap.filter (fun _ (_, _, ty, t) ->
-				begin match t, Skeleton.unalias ty with
+				begin match t, Skeleton.unalias sem ty with
 				| None, Arrow _ -> true | _ -> false
 				end)
 		|> Util.SMap.bindings
@@ -363,12 +362,12 @@ let get_terms_not_implemented sem =
 r   special comments *)
 let specified_types ~comm ss: type_def list =
 	let constructor c =
-		begin match c.s_input_type with
-		| Product [] -> (c.s_name, None, c.s_comment)
-		| ty -> (c.s_name, Some (get_type ty), c.s_comment)
+		begin match c.cs_input_type with
+		| Product [] -> (c.cs_name, None, c.cs_comment)
+		| ty -> (c.cs_name, Some (get_type ty), c.cs_comment)
 		end
 	in
-	let field c = (c.s_name, get_type c.s_output_type, c.s_comment) in
+	let field f = (f.fs_name, get_type f.fs_field_type, f.fs_comment) in
 	let extract =
 		List.map (begin function | Variable v -> v | _ -> assert false end)
 	in
@@ -378,38 +377,44 @@ let specified_types ~comm ss: type_def list =
 		if not comm then None else
 		let name =
 			begin match base_type with
-			| Base (_, name, _, _) -> name
+			| UserType (_, name, _, _) -> name
 			| _ -> assert false
 			end
 		in
 		begin match Util.SMap.find_opt name ss.ss_types with
-		| Some (c, _, _, _) -> c
+		| Some (c, _) -> c
 		| None -> failwith "Internal error 1"
 		end
 	in
 	let variant_type_decls =
 		List.map (fun (ty, c) ->
 			begin match ty with
-			| Base (None, name, Variant, args) ->
-					TDVariant (get_comm ty, extract args, name, List.map constructor c)
+			| UserType (None, name, Variant, args) ->
+					MLTDVariant (get_comm ty, extract args, name, List.map constructor c)
 			| _ -> assert false
 			end) const
 	in
 	let record_type_decls =
 		List.map (fun (ty, f) ->
 			begin match ty with
-			| Base (None, name, Record, args) ->
-					TDRecord (get_comm ty, extract args, name, List.map field f)
+			| UserType (None, name, Record, args) ->
+					MLTDRecord (get_comm ty, extract args, name, List.map field f)
 			| _ -> assert false
 			end) fields
 	in
 	 (variant_type_decls @ record_type_decls)
 
 let get_aliases ss: type_def list =
-	let get_alias (name, (c, ta, ty)) =
-		TDAlias (c, ta, name, get_type ty)
+	let aliases = Util.SMap.filter_map (fun _ (com, td) ->
+		begin match td with
+		| TDAlias (ta, ty) -> Some (com, ta, ty)
+		| _ -> None
+		end) ss.ss_types
 	in
-	List.map get_alias (Util.SMap.bindings ss.ss_aliases)
+	let get_alias (name, (c, ta, ty)) =
+		MLTDAlias (c, ta, name, get_type ty)
+	in
+	List.map get_alias (Util.SMap.bindings aliases)
 
 (* Function to extract "with module _ = _" *)
 let with_modules l =

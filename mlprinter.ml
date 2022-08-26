@@ -261,7 +261,7 @@ let print_constr_def ff (name, ty, com) =
 
 let print_type_def beg ff def =
 	begin match def with
-	| TDVariant (com, a, name, cl) ->
+	| MLTDVariant (com, a, name, cl) ->
 			begin match cl with
 			| [] ->
 					fprintf ff "%a@[<v>%s %a = |@]"
@@ -273,7 +273,7 @@ let print_type_def beg ff def =
 						print_type (MLTyBase (name, List.map (fun x -> MLTyVar x) a))
 						(pp_print_list print_constr_def) cl
 			end
-	| TDRecord (com, a, name, fl) ->
+	| MLTDRecord (com, a, name, fl) ->
 			begin match fl with
 			(* records with no fields are indistinguishable to tuples with no
 			   components, and are therefore treated as such *)
@@ -284,7 +284,7 @@ let print_type_def beg ff def =
 						print_type (MLTyBase (name, List.map (fun x -> MLTyVar x) a))
 						(pp_print_list print_field_def) fl
 			end
-	| TDAlias (com, a, name, ty) ->
+	| MLTDAlias (com, a, name, ty) ->
 			fprintf ff
 			"%a@[<v>%s %a = %a@]"
 				print_com_nl com

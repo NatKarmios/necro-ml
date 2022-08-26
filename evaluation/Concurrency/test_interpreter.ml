@@ -93,6 +93,8 @@ let _ =
 	let open Tester(Monads.List) in
 	print_endline "Continuation monad:";
 	let open Tester(Monads.ContPoly) in
+	print_endline "BFS monad (with optim):";
+	let open Tester(Monads.BfsOptim) in
 	print_endline "BFS monad:";
 	let open Tester(Monads.Bfs) in
 	()

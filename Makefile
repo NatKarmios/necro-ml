@@ -35,6 +35,7 @@ new_version:
 	sed -i -r "s#v$(VERSION).tar.gz#v$$g.tar.gz#" ./necroml.opam.template;\
 	sed -i -r "s/^VERSION := $(VERSION)/VERSION := $$g/" ./Makefile;\
 	sed -i -r "s/^\(version $(VERSION)\)$$/\(version $$g\)/" ./dune-project;\
+	git commit ./dune-project ./Makefile ./necroml.opam.template -m "Release version $$g";\
 	git tag -a v$$g -fm 'OPAM necroml package for deployment'
 	git push --follow-tags
 

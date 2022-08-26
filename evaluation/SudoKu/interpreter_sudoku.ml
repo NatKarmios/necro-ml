@@ -136,6 +136,8 @@ let _ =
 	let open Tester(Monads.ContPoly) in
 	print_endline "BFS monad:";
 	let open Tester(Monads.Bfs) in
+	print_endline "BFS monad (with optimization):";
+	let open Tester(Monads.BfsOptim) in
 	()
 
 
