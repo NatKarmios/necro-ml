@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 2.10
+- Add necromonads to dune
+
 ## Version 2.9
 - Update to Necro Lib 0.11
 - add a `--version` option
