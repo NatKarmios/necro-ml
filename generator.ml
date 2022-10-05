@@ -604,7 +604,16 @@ let generate_interpreter includes sem: ast =
 	let rec apply_max =
 		begin function
 		| TFunc (_, s) -> apply_max_skel s
-		| _ -> 0
+		| TVar _ -> 0
+		| TConstr (_, _, t) -> apply_max t
+		| TTuple tl -> List.fold_left (fun n t -> max n (apply_max t)) 0 tl
+		| TField (t, _, _) -> apply_max t
+		| TRecMake psl ->
+				List.fold_left (fun n (_, _, t) -> max n (apply_max t)) 0 psl
+		| TRecSet (t, psl) ->
+				let max_psl =
+					List.fold_left (fun n (_, _, t) -> max n (apply_max t)) 0 psl
+				in max max_psl (apply_max t)
 		end
 	and apply_max_skel =
 		begin function

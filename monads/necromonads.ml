@@ -67,8 +67,10 @@ module ID = struct
 	let extract x = x
 end
 
+let () =
+	Random.self_init ()
+
 let shuffle l =
-	let () = Random.self_init () in
 	let lrand = Stdlib.List.map (fun c -> (Random.bits (), c)) l in
 	Stdlib.List.sort compare lrand |> Stdlib.List.map snd
 
