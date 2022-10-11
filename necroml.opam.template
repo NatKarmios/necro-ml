@@ -1,4 +1,4 @@
 url {
- src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v2.10.1/necro-ml-v2.10.1.tar.gz"
+ src : "https://gitlab.inria.fr/skeletons/necro-ml/-/archive/v2.10.2/necro-ml-v2.10.2.tar.gz"
  checksum: "md5=2d06a38c9a0a997e9b35b134a8b64cff"
 }
