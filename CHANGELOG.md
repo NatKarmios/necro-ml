@@ -1,5 +1,11 @@
 # Changelog
 
+## Version 2.10.2
+- includes are now printed in the same order everywhere
+
+## Version 2.10.1
+- Fix
+
 ## Version 2.10
 - Add necromonads to dune
 

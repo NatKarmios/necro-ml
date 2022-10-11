@@ -601,6 +601,7 @@ let build_map _includes ss =
 
 (* writes the interpreter generator modules to stdout *)
 let generate_interpreter includes sem: ast =
+	let includes = List.sort String.compare includes in
 	let rec apply_max =
 		begin function
 		| TFunc (_, s) -> apply_max_skel s
