@@ -118,6 +118,8 @@ let rec get_pattern sem p =
 			MLPTuple (List.map (get_pattern sem) pl)
 	| PRecord pl ->
 			MLPRecord (List.map get_record_field pl)
+	| POr (p1, p2) ->
+			MLPOr (get_pattern sem p1, get_pattern sem p2)
 	end
 
 let rec get_term_of_term sem =
@@ -195,13 +197,12 @@ let rec get_term_of_term sem =
 
 and get_term_of_skel sem s =
 	begin match s with
-	| Return t | Apply (t, []) ->
+	| Return t ->
 			MLTApp (MLTVar (Some "M", "ret"), [get_term_of_term sem t])
-	| Apply (f, q) ->
+	| Apply (f, x) ->
 			MLTApp (
-				MLTVar (None, Format.sprintf "apply%d" (List.length q)),
-				get_term_of_term sem f ::
-				List.map (get_term_of_term sem) q
+				MLTVar (Some "M", "apply"),
+				get_term_of_term sem f :: get_term_of_term sem x :: []
 			)
 	| LetIn (None, p, s1, s2) ->
 		if Skeleton.is_exhaustive sem (Skeltypes.pattern_typ p) [p]
@@ -280,7 +281,7 @@ and get_term_of_skel sem s =
 			MLTApp (MLTVar (Some "M", "branch"), [MLTList branches])
 	| Match (tm, _, outs) ->
 			let branches =
-				List.map (Util.pair_app (get_pattern sem) (get_term_of_skel sem)) outs
+				List.map (Pair.map (get_pattern sem) (get_term_of_skel sem)) outs
 			in
 			MLTMatchWith (get_term_of_term sem tm, branches)
 	| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
@@ -494,47 +495,14 @@ let get_opens sem: module_tld list =
 	in
 	List.filter_map print_include (Util.SMap.bindings sem.ss_includes)
 
-let get_applys apply_max =
-	let mkvar x = MLTVar (None, x) in
-	let x2xn n =
-		let () = assert (n >= 2) in
-		List.init (n-1) (fun i -> Format.sprintf "arg%d" (i+2))
-	in
-	let apply1 = 
-		("apply1", None, [], None, MLTVar (Some "M", "apply"))
-	in
-	let apply i =
-		if i = 1 then apply1 else
-		if i < 1 then assert false else
-		let x2xi = x2xn i in
-		let apply_prev = Format.sprintf "apply%d" (i-1) in
-		(
-			Format.sprintf "apply%d" i, (* name *)
-			None, (* comment *)
-			"f" :: "arg1" :: x2xi, (* args *)
-			None, (* type *)
-			MLTLetStarIn (
-				MLPVar "_tmp",
-				MLTApp (mkvar "apply1", [mkvar "f"; mkvar "arg1"]),
-				MLTApp (
-					mkvar apply_prev,
-					MLTVar (None, "_tmp")
-					:: List.map mkvar x2xi
-				)
-			) (* body *)
-		)
-	in
-	List.init apply_max (fun i -> MValDef (apply (i+1)))
-
 (* writes the MakeInterpreter functor *)
-let makeinterpreter_functor apply_max sem =
+let makeinterpreter_functor sem =
 	let comment = " Module defining the specified terms " in
 	let args = ("F",["UNSPEC"],[]) :: get_module_args sem in
 	let body =
 		[ MInclude ["F"]
 		; MValDef ("( let* )", None, [], None, MLTVar (Some "M", "bind"))
 		] @ MBlock (get_opens sem)
-		:: MBlock (get_applys apply_max)
 		:: get_term_definitions sem
 		:: []
 	in
@@ -602,44 +570,6 @@ let build_map _includes ss =
 (* writes the interpreter generator modules to stdout *)
 let generate_interpreter includes sem: ast =
 	let includes = List.sort String.compare includes in
-	let rec apply_max =
-		begin function
-		| TFunc (_, s) -> apply_max_skel s
-		| TVar _ -> 0
-		| TConstr (_, _, t) -> apply_max t
-		| TTuple tl -> List.fold_left (fun n t -> max n (apply_max t)) 0 tl
-		| TField (t, _, _) -> apply_max t
-		| TRecMake psl ->
-				List.fold_left (fun n (_, _, t) -> max n (apply_max t)) 0 psl
-		| TRecSet (t, psl) ->
-				let max_psl =
-					List.fold_left (fun n (_, _, t) -> max n (apply_max t)) 0 psl
-				in max max_psl (apply_max t)
-		end
-	and apply_max_skel =
-		begin function
-		| Branching (_, sl) -> List.fold_left max 0 (List.map apply_max_skel sl)
-		| LetIn (Some _, _, s1, s2) ->
-				max 2
-				(max (apply_max_skel s1) (apply_max_skel s2))
-		| LetIn (None, _, s1, s2) -> max (apply_max_skel s1) (apply_max_skel s2)
-		| Return t -> apply_max t
-		| Match (t, _, psl) ->
-				max
-					(apply_max t)
-					(List.fold_left max 0 (List.map (Util.comp snd apply_max_skel) psl))
-		| Apply (t1, l1) ->
-				List.fold_left (fun a b -> max a (apply_max b)) (List.length l1) (t1::l1)
-		| Exists _ -> failwith "Existentials are not supported by Necro ML yet"
-		end
-	in
-	let apply_max =
-		Util.SMap.fold (fun _ (_, _, _, o) i ->
-			begin match o with
-			| None -> i
-			| Some t -> max (apply_max t) i
-			end) sem.ss_terms 0
-	in
 	let ok x =
 		not (List.mem x necro_ocaml_keywords) &&
 		not (Skeleton.all_variables_ss sem x) &&
@@ -660,7 +590,7 @@ let generate_interpreter includes sem: ast =
 		; unspec_module_type sem (* module type UNSPEC *)
 		; unspec_functor sem (* module Unspec (M:MONAD) (T:TYPES) *)
 		; interpreter_module_type sem (* module type INTERPRETER *)
-		; makeinterpreter_functor apply_max sem (* module MakeInterpreter (F: UNSPEC) …*)
+		; makeinterpreter_functor sem (* module MakeInterpreter (F: UNSPEC) …*)
 		]
 	in
 	ast

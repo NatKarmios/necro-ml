@@ -37,6 +37,7 @@ type mlpattern =
 	| MLPTop
 	| MLPTuple of mlpattern list
 	| MLPRecord of (from * string * mlpattern) list
+	| MLPOr of mlpattern * mlpattern
 
 type mlterm =
 	| MLTVar of from * string

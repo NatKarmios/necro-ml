@@ -128,7 +128,7 @@ let rec print_pattern ff p =
 	| MLPVar x -> pp_print_string ff x
 	| MLPConstr (f, c, None) -> fprintf ff "%a%s" print_from f c
 	| MLPConstr (f, c, Some p) ->
-			fprintf ff "%a%s %a" print_from f c print_pattern p
+			fprintf ff "%a%s %a" print_from f c print_pattern_protect p
 	| MLPTop -> fprintf ff "()"
 	| MLPTuple pl ->
 			let () = assert (List.length pl >= 2) in
@@ -138,11 +138,13 @@ let rec print_pattern ff p =
 				fprintf ff "%a%s = %a" print_from from f print_pattern p
 			in
 			fprintf ff "{%a}" (Util.print_list ~sep:"; " print_field) fl
+	| MLPOr (p1, p2) ->
+			fprintf ff "%a | %a" print_pattern p1 print_pattern p2
 	end
 
 and print_pattern_protect ff p =
 	begin match p with
-	| MLPConstr (_, _, Some _) ->
+	| MLPConstr (_, _, Some _) | MLPOr _ ->
 			fprintf ff "(%a)" print_pattern p
 	| MLPWild | MLPVar _ | MLPConstr (_, _, None)
 	| MLPTop | MLPTuple _ | MLPRecord _ ->
