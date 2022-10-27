@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 0.2.11.1
+- Fix dependencies
+
 ## Version 0.2.11
 - Update to Necro Lib v0.12 which means
   - application to only one argument
