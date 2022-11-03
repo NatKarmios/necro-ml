@@ -240,20 +240,18 @@ and get_term_of_skel sem s =
 			begin match s1 with
 			| Return v1 ->
 					MLTApp (
-						MLTVar (None, "apply2"),
-						MLTVar (convert_from from, m) ::
-						get_term_of_term sem v1 ::
-						MLTFunc (get_pattern sem p, get_term_of_skel sem s2) :: []
+						MLTVar (convert_from from, m),
+						[MLTTuple ( get_term_of_term sem v1 ::
+							MLTFunc (get_pattern sem p, get_term_of_skel sem s2) :: [])]
 					)
 			| _ ->
 					MLTLetStarIn (
 						MLPVar !tmp,
 						get_term_of_skel sem s1,
 						MLTApp (
-							MLTVar (None, "apply2"),
-							MLTVar (from, m) ::
-							MLTVar (None, !tmp) ::
-							MLTFunc (get_pattern sem p, get_term_of_skel sem s2) :: []
+							MLTVar (from, m),
+							[MLTTuple (MLTVar (None, !tmp) ::
+								MLTFunc (get_pattern sem p, get_term_of_skel sem s2) :: [])]
 						)
 					)
 			end
@@ -262,14 +260,13 @@ and get_term_of_skel sem s =
 				MLPVar !tmp,
 				get_term_of_skel sem s1,
 				MLTApp (
-					MLTVar (None, "apply2"),
-					MLTVar (from, m) ::
-					MLTVar (None, !tmp) ::
-					MLTFunc (
-						MLPVar !tmp,
-						get_term_of_skel sem
-							(LetIn (None, p, Return (TVar (TVLet (!tmp, Product []))), s2))
-					) :: []
+					MLTVar (from, m),
+					[MLTTuple (MLTVar (None, !tmp) ::
+						MLTFunc (
+							MLPVar !tmp,
+							get_term_of_skel sem
+								(LetIn (None, p, Return (TVar (TVLet (!tmp, Product []))), s2))
+						) :: [])]
 				)
 			)
 	| Branching (_, outs) ->
