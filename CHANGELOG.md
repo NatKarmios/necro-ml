@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 0.2.11.3
+- Fix issue #6
+
 ## Version 0.2.11.2
 - Fix issue #5
 
