@@ -45,23 +45,23 @@ module type MONAD = sig
   val ret: 'a -> 'a t
   val bind: 'a t -> ('a -> 'b t) -> 'b t
   val branch: (unit -> 'a t) list -> 'a t
-  val fail: string -> 'a t
+  val fail: unit -> 'a t
   val apply: ('a -> 'b t) -> 'a -> 'b t
   val extract: 'a t -> 'a
 end
 
 
 module ID = struct
-	exception Branch_fail of string
+	exception Branch_fail
 	type 'a t = 'a
 	let ret x = x
 	let rec branch l =
 		begin match l with
-		| [] -> raise (Branch_fail "No branch matches")
+		| [] -> raise Branch_fail
 		| b1 :: bq ->
-				try b1 () with Branch_fail _ -> branch bq
+				try b1 () with Branch_fail -> branch bq
 		end
-	let fail s = raise (Branch_fail s)
+	let fail () = raise (Branch_fail)
 	let bind x f = f x
 	let apply f x = f x
 	let extract x = x
@@ -96,40 +96,40 @@ module List = struct
 end
 
 module Cont = struct
-	type fcont = string -> unit
+	type fcont = unit -> unit
 	type 'a cont = 'a -> fcont -> unit
 	type 'a t = 'a cont -> fcont -> unit
 	let ret (x: 'a) = fun (k:'a cont) fcont -> k x fcont
 	let bind (x: 'a t) (f: 'a -> 'b t) =
 		fun k fcont -> x (fun v fcont' -> f v k fcont') fcont
-	let fail s = fun _k fcont -> fcont s
+	let fail _ = fun _k fcont -> fcont ()
 	let rec branch l = fun k fcont ->
 		begin match l with
-		| [] -> fcont "No branch matches"
+		| [] -> fcont ()
 		| b :: bs -> (b ()) k (fun _ -> branch bs k fcont)
 		end
 	let apply f x = f x
 	let extract (x: 'a t) =
 		let y = ref None in
-		let () = x (fun a _ -> y:=Some a) (fun s -> failwith s) in
+		let () = x (fun a _ -> y:=Some a) (fun () -> failwith "No result") in
 		Option.get !y
 end
 
 module ContPoly = struct
-	type 'b fcont = string -> 'b
+	type 'b fcont = unit -> 'b
 	type ('a,'b) cont = 'a -> 'b fcont -> 'b
 	type 'a t = {cont: 'b. (('a,'b) cont -> 'b fcont -> 'b)}
 	let ret (x: 'a) = { cont= fun k fcont -> k x fcont }
 	let bind (x: 'a t) (f: 'a -> 'b t) : 'b t =
 		{ cont = fun k fcont -> x.cont (fun v fcont' -> (f v).cont k fcont') fcont }
-	let fail s = { cont = fun _k fcont -> fcont s }
+	let fail () = { cont = fun _k fcont -> fcont () }
 	let rec branch l = { cont = fun k fcont ->
 		match l with
-		| [] -> fcont "No branch matches"
+		| [] -> fcont ()
 		| b :: bs -> (b ()).cont k (fun _ -> (branch bs).cont k fcont) }
 	let apply f x = f x
 	let extract x =
-		x.cont (fun a _ -> a) (fun s -> failwith s)
+		x.cont (fun a _ -> a) (fun () -> failwith "No result")
 end
 
 module Bfs = struct

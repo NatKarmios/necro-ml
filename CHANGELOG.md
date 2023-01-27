@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 0.2.11.4
+- Remove leftover debugging string
+
 ## Version 0.2.11.3
 - Fix issue #6
 
