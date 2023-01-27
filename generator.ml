@@ -169,7 +169,7 @@ let rec get_term_of_term sem =
 			else
 				MLTFunction (
 					(get_pattern sem p, get_term_of_skel sem s) ::
-					(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTString ""])) :: []
+					(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTTop])) :: []
 				)
 	| TField (t, ta, (from, f, _)) ->
 			begin match int_of_string_opt f with
@@ -219,7 +219,7 @@ and get_term_of_skel sem s =
 						get_term_of_term sem v1,
 						[
 							(get_pattern sem p, get_term_of_skel sem s2) ;
-							(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTString ""]))
+							(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTTop]))
 						]
 					)
 			| _ ->
@@ -230,7 +230,7 @@ and get_term_of_skel sem s =
 							MLTVar (None, !tmp),
 							[
 								(get_pattern sem p, get_term_of_skel sem s2) ;
-								(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTString ""]))
+								(MLPWild, MLTApp (MLTVar (Some "M", "fail"), [MLTTop]))
 							]
 						)
 					)
@@ -470,7 +470,7 @@ let monad_module_type _sem =
 			MLTyArrow (t "a", MLTyArrow (MLTyArrow (MLTyVar "a", t "b"), t "b")))
 		; MTValDecl (None, "branch",
 			MLTyArrow (MLTyList (MLTyArrow (MLTyUnit, t "a")), t "a"))
-		; MTValDecl (None, "fail", MLTyArrow (MLTyString, t "a"))
+		; MTValDecl (None, "fail", MLTyArrow (MLTyUnit, t "a"))
 		; MTValDecl (None, "apply",
 			let a_bt = MLTyArrow (MLTyVar "a", t "b") in
 			MLTyArrow (a_bt, a_bt))
