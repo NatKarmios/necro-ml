@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 0.3
+- Update to use with Necro Lib 0.14.5
+
 ## Version 0.2.11.4.1
 - Fix
 

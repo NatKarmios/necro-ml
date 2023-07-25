@@ -1,10 +1,25 @@
+(**************************************************************************)
+(*                                                                        *)
+(*                             Necro Library                              *)
+(*                                                                        *)
+(*                 Victoire Noizet, projet Épicure, Inria                 *)
+(*                                                                        *)
+(*   Copyright 2022 INRIA.                                                *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU General Public License version 3 as described in the file    *)
+(*   LICENSE.                                                             *)
+(*                                                                        *)
+(**************************************************************************)
+
 (** * Auxiliary functions **)
 let give_version () =
 	Printf.printf "Necro ML, version: %s\n"
-	(match Build_info.V1.version () with
-	 | None -> "n/a"
-	 | Some v -> Build_info.V1.Version.to_string v);
-	 exit 0
+	begin match Build_info.V1.version () with
+	 | None -> "N/A"
+	 | Some v -> Build_info.V1.Version.to_string v
+	end;
+	exit 0
 
 
 (** Wrap a function call to make the whole program fail with the right error code if an exception happens. **)
@@ -83,9 +98,11 @@ let () =
 		| a :: q -> if List.for_all ((=) a) q then Some a else usage ()
 		end
 	in
-	let sem = Necro.parse_and_type d f |> Necro.Skeleton.lss_to_ss in
-	let l = List.map get_basename d in
-	let ml_ast = wrap2 Generator.generate_interpreter l sem in
+	let deps' = Necro.parse_and_type_list d in
+	let deps = List.combine (List.map get_basename d) deps' in
+	let sem = Necro.parse_and_type d f in
+	let ml_ast =
+		wrap2 Generator.generate_interpreter deps (get_basename f, sem) in
 	let result = Mlprinter.print_ast ml_ast in
 	Necro.Util.print_in_file result output_file
 

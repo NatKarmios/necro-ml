@@ -5,8 +5,8 @@
 
 (generate_opam_files true)
 
-(authors "Alan Schmitt" "Louis Noizet")
-(maintainers "Louis Noizet")
+(authors "Alan Schmitt" "Victoire Noizet")
+(maintainers "Victoire Noizet")
 
 (bug_reports https://gitlab.inria.fr/skeletons/necro-ml/-/issues)
 (homepage https://skeletons.gitlabpages.inria.fr/necro-website)
@@ -18,7 +18,8 @@
    (description "Necro ML allows to generate an OCaml interpreter from a \
                 skeletal semantics.")
    (depends (ocaml (>= 4.10.0))
-            (necrolib (and (>= 0.12) (< 0.13)))
+            (necrolib (and (>= 0.14.5) (< 0.15)))
+            (necrotrans (>= 0.1))
             dune-build-info)
    )
 

@@ -1,3 +1,17 @@
+(**************************************************************************)
+(*                                                                        *)
+(*                             Necro Library                              *)
+(*                                                                        *)
+(*                 Victoire Noizet, projet Épicure, Inria                 *)
+(*                                                                        *)
+(*   Copyright 2022 INRIA.                                                *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU General Public License version 3 as described in the file    *)
+(*   LICENSE.                                                             *)
+(*                                                                        *)
+(**************************************************************************)
+
 open Mlast
 open Format
 open Necro
@@ -33,7 +47,8 @@ let print_with ff withes =
 	Util.print_list ~sep:"" print_one_with ff withes
 
 let print_from ff from =
-	Option.iter (fun x -> fprintf ff "%s." x) from
+	let print_one ff s = fprintf ff "%s." s in
+	Util.print_list ~sep:"" print_one ff from
 
 let print_type_var ff v =
 	fprintf ff "'%s" v
@@ -41,17 +56,17 @@ let print_type_var ff v =
 let rec monoline v =
 	begin match v with
 	| MLTVar _ -> true
-	| MLTConstr (_f, _c, None) -> true
-	| MLTConstr (_f, _c, Some t) -> monoline t
+	| MLTConstr (_c, None) -> true
+	| MLTConstr (_c, Some t) -> monoline t
 	| MLTTop -> true
 	| MLTTuple [] | MLTTuple [_] -> assert false
 	| MLTTuple tl -> List.for_all monoline tl
-	| MLTRecMake fl -> List.for_all (fun (_, _, v) -> monoline v) fl
+	| MLTRecMake fl -> List.for_all (fun (_, v) -> monoline v) fl
 	| MLTRecWith (t, fl) ->
-			List.for_all (fun (_, _, v) -> monoline v) fl && monoline t
+			List.for_all (fun (_, v) -> monoline v) fl && monoline t
 	| MLTFunc _ -> false
 	| MLTFunction _ -> false
-	| MLTField (t, _f, _n) -> monoline t
+	| MLTField (t, _n) -> monoline t
 	| MLTApp (t, tl) -> List.for_all monoline (t::tl)
 	| MLTLetIn _ -> false
 	| MLTLetStarIn _ -> false
@@ -65,7 +80,7 @@ let rec monoline v =
 let rec print_type ff ty =
 	begin match ty with
 	| MLTyVar v -> print_type_var ff v
-	| MLTyFrom (from, s, args) -> 
+	| MLTyFrom (from, s, args) ->
 			begin match args with
 			| []      ->
 					fprintf ff "%a%s" print_from from s
@@ -75,7 +90,7 @@ let rec print_type ff ty =
 					fprintf ff "(%a) %a%s"
 					(Util.print_list ~sep:", " print_type) args print_from from s
 			end
-	| MLTyBase (s, args) -> print_type ff (MLTyFrom (None, s, args))
+	| MLTyBase (s, args) -> print_type ff (MLTyFrom ([], s, args))
 	| MLTyUnit -> fprintf ff "unit"
 	| MLTyString -> fprintf ff "string"
 	| MLTyList ty -> fprintf ff "%a list" print_type_protect ty
@@ -126,16 +141,16 @@ let rec print_pattern ff p =
 	begin match p with
 	| MLPWild -> fprintf ff "_"
 	| MLPVar x -> pp_print_string ff x
-	| MLPConstr (f, c, None) -> fprintf ff "%a%s" print_from f c
-	| MLPConstr (f, c, Some p) ->
-			fprintf ff "%a%s %a" print_from f c print_pattern_protect p
+	| MLPConstr (c, None) -> fprintf ff "%s"  c
+	| MLPConstr (c, Some p) ->
+			fprintf ff "%s %a" c print_pattern_protect p
 	| MLPTop -> fprintf ff "()"
 	| MLPTuple pl ->
 			let () = assert (List.length pl >= 2) in
 			fprintf ff "(%a)" (Util.print_list ~sep:", " print_pattern) pl
 	| MLPRecord fl ->
-			let print_field ff (from, f, p) =
-				fprintf ff "%a%s = %a" print_from from f print_pattern p
+			let print_field ff (f, p) =
+				fprintf ff "%s = %a" f print_pattern p
 			in
 			fprintf ff "{%a}" (Util.print_list ~sep:"; " print_field) fl
 	| MLPOr (p1, p2) ->
@@ -144,9 +159,9 @@ let rec print_pattern ff p =
 
 and print_pattern_protect ff p =
 	begin match p with
-	| MLPConstr (_, _, Some _) | MLPOr _ ->
+	| MLPConstr (_, Some _) | MLPOr _ ->
 			fprintf ff "(%a)" print_pattern p
-	| MLPWild | MLPVar _ | MLPConstr (_, _, None)
+	| MLPWild | MLPVar _ | MLPConstr (_, None)
 	| MLPTop | MLPTuple _ | MLPRecord _ ->
 			print_pattern ff p
 	end
@@ -155,22 +170,22 @@ let rec print_term ff v =
 	begin match v with
 	| MLTVar (f, name) ->
 			fprintf ff "%a%s" print_from f name
-	| MLTConstr (f, c, None) ->
-			fprintf ff "%a%s" print_from f c
-	| MLTConstr (f, c, Some t) ->
-			fprintf ff "%a%s %a" print_from f c print_term_protect t
+	| MLTConstr (c, None) ->
+			fprintf ff "%s" c
+	| MLTConstr (c, Some t) ->
+			fprintf ff "%s %a" c print_term_protect t
 	| MLTTop -> Format.fprintf ff "()"
 	| MLTTuple [] | MLTTuple [_] -> assert false
 	| MLTTuple tl ->
 			fprintf ff "(%a)" (Util.print_list ~sep:", " print_term) tl
 	| MLTRecMake fl ->
-			let print_field ff (f, n, v) =
-				Format.fprintf ff "%a%s = %a" print_from f n print_term v
+			let print_field ff (n, v) =
+				Format.fprintf ff "%s = %a" n print_term v
 			in
 			fprintf ff "{%a}" (Util.print_list ~sep:"; " print_field) fl
 	| MLTRecWith (t, fl) ->
-			let print_field ff (f, n, v) =
-				Format.fprintf ff "%a%s = %a" print_from f n print_term v
+			let print_field ff (n, v) =
+				Format.fprintf ff "%s = %a" n print_term v
 			in
 			fprintf ff
 				"{%a with %a}" print_term t
@@ -181,8 +196,8 @@ let rec print_term ff v =
 			fprintf ff "function %a"
 			(pp_print_list (fun ff (p, t) ->
 				fprintf ff "| %a ->@,%a@," print_pattern_protect p print_term t)) l
-	| MLTField (t, f, n) ->
-			fprintf ff "%a.%a%s" print_term t print_from f n
+	| MLTField (t, n) ->
+			fprintf ff "%a.%s" print_term t n
 	| MLTApp (t, tl) ->
 			fprintf ff "@[<v 2>%a %a@]" print_term_protect t
 			(Util.print_list ~sep:" " print_term_protect) tl
@@ -192,7 +207,7 @@ let rec print_term ff v =
 			print_bind bound
 			print_term body
 	(* fold [let* p = M.ret y in …] into [let p = y in …] *)
-	| MLTLetStarIn (p, MLTApp (MLTVar (Some "M", "ret"), [arg]), body) ->
+	| MLTLetStarIn (p, MLTApp (MLTVar (["M"], "ret"), [arg]), body) ->
 			print_term ff (MLTLetIn (p, arg, body))
 	| MLTLetStarIn (p, bound, body) ->
 			fprintf ff "@[<v 2>let* %a =%ain@,%a"
@@ -233,10 +248,10 @@ and print_bind ff v =
 
 and print_term_protect ff v =
 	begin match v with
-	| MLTVar _ | MLTConstr (_, _, None) | MLTTop | MLTTuple _ | MLTRecMake _
+	| MLTVar _ | MLTConstr (_, None) | MLTTop | MLTTuple _ | MLTRecMake _
 	| MLTRecWith _ | MLTField _ | MLTMatchWith _ | MLTString _ | MLTList _ ->
 			print_term ff v
-	| MLTConstr (_, _, Some _) | MLTFunc _ | MLTFunction _ | MLTApp _ | MLTLetIn _
+	| MLTConstr (_, Some _) | MLTFunc _ | MLTFunction _ | MLTApp _ | MLTLetIn _
 	| MLTLetStarIn _ ->
 			Format.fprintf ff "(%a)" print_term v
 	end

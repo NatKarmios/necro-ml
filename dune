@@ -1,8 +1,0 @@
-(executable
- (name necroml)
- (public_name necroml)
- (package necroml)
- (libraries necrolib dune-build-info)
- (modules_without_implementation mlast)
-)
-

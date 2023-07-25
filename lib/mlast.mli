@@ -1,3 +1,17 @@
+(**************************************************************************)
+(*                                                                        *)
+(*                             Necro Library                              *)
+(*                                                                        *)
+(*                 Victoire Noizet, projet Épicure, Inria                 *)
+(*                                                                        *)
+(*   Copyright 2022 INRIA.                                                *)
+(*                                                                        *)
+(*   All rights reserved.  This file is distributed under the terms of    *)
+(*   the GNU General Public License version 3 as described in the file    *)
+(*   LICENSE.                                                             *)
+(*                                                                        *)
+(**************************************************************************)
+
 type comment = string
 type module_name = string
 type mod_path = module_name list
@@ -8,7 +22,7 @@ type arg = string
 type args = arg list
 type type_name = string
 type term_name = string
-type from = module_name option
+type from = module_name list
 
 type mltype =
 	| MLTyVar of string
@@ -33,22 +47,22 @@ type type_def =
 type mlpattern =
 	| MLPWild
 	| MLPVar of string
-	| MLPConstr of from * string * mlpattern option
+	| MLPConstr of string * mlpattern option
 	| MLPTop
 	| MLPTuple of mlpattern list
-	| MLPRecord of (from * string * mlpattern) list
+	| MLPRecord of (string * mlpattern) list
 	| MLPOr of mlpattern * mlpattern
 
 type mlterm =
 	| MLTVar of from * string
-	| MLTConstr of from * string * mlterm option
+	| MLTConstr of string * mlterm option
 	| MLTTop
 	| MLTTuple of mlterm list
-	| MLTRecMake of (from * string * mlterm) list
-	| MLTRecWith of mlterm * (from * string * mlterm) list
+	| MLTRecMake of (string * mlterm) list
+	| MLTRecWith of mlterm * (string * mlterm) list
 	| MLTFunc of mlpattern * mlterm
 	| MLTFunction of (mlpattern * mlterm) list
-	| MLTField of mlterm * from * string
+	| MLTField of mlterm * string
 	| MLTApp of mlterm * mlterm list
 	| MLTLetIn of mlpattern * mlterm * mlterm
 	| MLTLetStarIn of mlpattern * mlterm * mlterm
