@@ -47,3 +47,15 @@ end
 Once you have created your module of type `UNSPEC`, you can provide it to the
 `MakeInterpreter` functor, to create an interpreter. Its signature will match
 that of `INTERPRETER`.
+
+# Caveats
+
+- The generated OCaml code may be invalid, when terms are not statically
+  constructive (see
+  [https://v2.ocaml.org/releases/5.0/htmlman/letrecvalues.html](OCaml manual))
+- The generated OCaml code may print warnings when executed, for instance in the
+  following cases:
+  - If a Skel file contains two constructors/fields with the same name, it will
+  print warning 30
+  - Warning 39 might happen occasionnally, since all values are assumed to be
+    mutually recursive

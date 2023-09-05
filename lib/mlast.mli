@@ -80,13 +80,17 @@ type module_type_tld =
 
 type module_tld =
 	| MBlock of module_tld list
+	| MModule of string * module_tld list
 	| MTypeDefs of type_def list
+	| MTypeNonRec of type_def
 	| MValDef of (term_name * comment option * args * polytype option * mlterm)
 	| MRecValDefs of (term_name * comment option * args * polytype option * mlterm) list
 	| MInclude of mod_path
 	| MException of string * mltype
+	| MOpenStruct of module_tld list
 	| MOpen of mod_path
 	| MModuleAlias of string * mod_path
+	| MComment of string
 
 type module_def = module_tld list
 type module_type_def = module_type_tld list

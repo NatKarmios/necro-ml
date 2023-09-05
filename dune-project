@@ -18,8 +18,8 @@
    (description "Necro ML allows to generate an OCaml interpreter from a \
                 skeletal semantics.")
    (depends (ocaml (>= 4.10.0))
-            (necrolib (and (>= 0.14.5) (< 0.15)))
-            (necrotrans (>= 0.1))
+            (necrolib (and (>= 0.14.6) (< 0.15)))
+            (necrotrans (>= 0.1.1))
             dune-build-info)
    )
 

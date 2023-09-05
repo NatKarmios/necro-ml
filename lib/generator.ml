@@ -29,9 +29,6 @@ open Necrotrans
 (* ===== ===== ===== ===== ===== ===== ===== ===== ===== ===== *)
 
 let tmp = ref "_tmp"
-type 'a tree = Node of 'a * 'a tree list
-let dep_map = ref (Util.SMap.empty: string list Util.SMap.t)
-let all_includes = ref ([]: string list)
 
 let necro_ocaml_keywords =
 	[
@@ -249,19 +246,52 @@ let get_poly_sig ta (ty: typ) =
 
 (* Write the mutually-recursive terms *)
 let get_term_definitions self sem =
-	let spec_terms =
-		sem.ss_terms
-		|> Util.SMap.bindings
-		|> List.filter_map (begin function
-			| (name, (c, (ta, ty, Some t))) ->
-					Some (name, ta, ty, t, c)
-			| _ -> None
-			end)
-	in
-	let get_term_decl (name, ta, ty, t, c) =
+	let open Util.SMap in
+	let get_term_decl name (ta, ty, t, c) =
 		(name, c, [], get_poly_sig ta ty, get_term_of_term self sem t)
 	in
-	MRecValDefs (List.map get_term_decl spec_terms)
+	let spec_terms =
+		sem.ss_terms
+		|> filter (fun _ (_, (_, _, o)) -> Option.is_some o)
+		|> map (begin function
+			| (c, (ta, ty, Some t)) ->
+					(ta, ty, t, c)
+			| _ -> assert false
+			end)
+		|> mapi get_term_decl
+	in
+	let def (_path, t) =
+		begin match Util.SMap.find_opt t spec_terms with
+		| None -> assert false
+		| Some x -> x
+		end
+	in
+	let dep = Skeleton.dependency_graph self sem in
+	let scc = Skeleton.PGraph.scc dep in
+	let scc_map =
+		List.fold_left (fun m l ->
+			begin match l with
+			| [] -> assert false (* scc failed *)
+			| (_path, a) :: _ -> (* no module at this point anyway *)
+					Util.SMap.add a l m
+			end) Util.SMap.empty scc
+	in
+	let dep_contracted = List.fold_left (fun dep component ->
+		Skeleton.PGraph.contract dep component) dep scc
+	in
+	let topo = Skeleton.PGraph.topo_sort dep_contracted in
+	List.map (fun (_, v) ->
+		let terms = Util.SMap.find v scc_map in
+		begin match terms with
+		| [] -> assert false (* contains at least v *)
+		| _ :: _ :: _ -> (* at least two recursive terms *)
+				MRecValDefs (List.map def terms)
+		| t :: [] ->
+				let t_out = Skeleton.PGraph.next dep t in
+				let recursive = List.mem t t_out in
+				if recursive then MRecValDefs [def t]
+				else MValDef (def t)
+		end) topo
 
 
 (* returns [type t] for all unspecified types *)
@@ -370,22 +400,10 @@ let get_with l =
 
 (* writes the UNSPEC module type *)
 let unspec_module_type sem =
-	(*let one_include i =
-		let l =
-			begin match Util.SMap.find_opt i !dep_map with
-			| None -> assert false
-			| Some l -> l
-			end
-		in
-		let i' = String.capitalize_ascii i in
-		let withes = (with_modules l) in
-		MTModule (i', [i'; "INTERPRETER"], withes)
-	in*)
 	let com = " All types, and the unspecified terms " in
 	let def =
 		MTBlock (
 			MTModule ("M", ["MONAD"], []) ::
-			(*List.map one_include !all_includes @*)
 			[MTInclude "TYPES"])
 		:: MTTypeDefs (specified_types ~comm:true sem @ get_aliases sem)
 		:: MTBlock (get_term_signatures ~all:false sem)
@@ -434,43 +452,65 @@ let get_opens sem: module_tld list =
 	List.filter_map print_include (Util.SMap.bindings sem.ss_includes)
 *)
 
+(* recreate the module structure (unflatten) *)
+let remake_module (remappings:Transformation.remapping) sem_init self =
+	let open Transformation in
+	let rec aux sem path =
+		let make_decl d =
+			begin match d with
+			| ParsedAST.TypeDecl x ->
+					let fullname =
+						begin match PMap.find_opt (path, x) remappings.types with
+						| Some x' -> x'
+						| None -> x
+						end
+					in
+					Some (MTypeNonRec (MLTDAlias (None, [(* FIXME *)], x,
+						MLTyBase (fullname, [(* FIXME *)]))))
+			| ParsedAST.TermDecl x ->
+					let fullname =
+						begin match PMap.find_opt (path, x) remappings.terms with
+						| Some x' -> x'
+						| None -> x
+						end
+					in
+					Some (MValDef (x, None, [], None, MLTVar ([], fullname)))
+			| ParsedAST.BinderDecl _ ->
+					None
+			| ParsedAST.ModuleDecl m ->
+					let (_, ss_m) = Util.SMap.find m sem.ss_modules in
+					Some (MModule (String.capitalize_ascii m, aux ss_m (Path.Abs.append path m)))
+			| ParsedAST.Comment c ->
+					Some (MComment c.contents)
+			end
+		in
+		List.filter_map make_decl sem.ss_order
+	in aux sem_init (Path.Abs.File (self, None))
+
 (* writes the MakeInterpreter functor *)
-let makeinterpreter_functor self sem =
+let makeinterpreter_functor self sem remappings sem_init =
 	let comment = " Module defining the specified terms " in
 	let args = ("F",["UNSPEC"],[])  in
 	let body =
 		[ MInclude ["F"]
 		; MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind"))
 		] @
-		[get_term_definitions self sem]
+		MOpenStruct (get_term_definitions self sem)
+		:: remake_module remappings sem_init self
 	in
 	Functor (Some comment, "MakeInterpreter", [args], body)
 
 let unspec_functor self sem =
 	let com = " A default instantiation " in
 	let args =
-		let interp_args =
-			List.map (fun name ->
-				let name = String.capitalize_ascii name in
-				(name, [name; "INTERPRETER"], ["M", ["M"]])
-			) !all_includes
-		in
 		("M", ["MONAD"], [])
-		:: ("T", ["TYPES"], [])
-		:: interp_args
-	in
-	let included_modules =
-			List.map (fun name ->
-				let name = String.capitalize_ascii name in
-				MModuleAlias (name, [name])
-			) !all_includes
+		:: ("T", ["TYPES"], []) :: []
 	in
 	let body =
 		MBlock (
 			MException ("NotImplemented", MLTyString)
 			:: MInclude ["T"]
-			:: MModuleAlias ("M", ["M"])
-			:: included_modules)
+			:: MModuleAlias ("M", ["M"]) :: [])
 		:: MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
 		:: MBlock (get_terms_not_implemented self sem)
 		:: []
@@ -479,12 +519,6 @@ let unspec_functor self sem =
 
 let interpreter_module_type sem =
 	let comment = " The module type for interpreters " in
-	(*let includes =
-		List.map (fun name ->
-			let name = String.capitalize_ascii name in
-			MTModule (name, [name;"INTERPRETER"], ["M", ["M"]])
-		) (match Util.SMap.find_opt "this" !dep_map with None -> assert false | Some x -> x)
-	in*)
 	let body =
 		MTModule ("M", ["MONAD"], [])
 		(*:: MTBlock includes*)
@@ -495,24 +529,10 @@ let interpreter_module_type sem =
 	in
 	ModuleType (Some comment, "INTERPRETER", body)
 
-	(*
-let build_map _includes ss =
-	let rec aux map (i, (s, _)) =
-		let open Util in
-		let incl = SMap.bindings s.ss_includes in
-		let map = SMap.add i (List.map fst incl) map in
-		List.fold_left aux map incl
-	in
-	let () = dep_map := aux Util.SMap.empty ("this", (ss, true)) in
-	()
-	*)
-
 (* writes the interpreter generator modules to stdout *)
-let generate_interpreter includes (self, sem): ast =
+let generate_interpreter includes (self, sem_init): ast =
 	let sem, remappings =
-		Transformation.flatten_modules includes (self, sem) in
-	let () = ignore remappings in
-	(* TODO: rebuild modules *)
+		Transformation.flatten_modules ["-f";"-c"] includes (self, sem_init) in
 	let version =
 		begin match Build_info.V1.version () with
 		| None -> "N/A"
@@ -529,7 +549,7 @@ let generate_interpreter includes (self, sem): ast =
 		; unspec_module_type sem (* module type UNSPEC *)
 		; unspec_functor self sem (* module Unspec (M:MONAD) (T:TYPES) *)
 		; interpreter_module_type sem (* module type INTERPRETER *)
-		; makeinterpreter_functor self sem (* module MakeInterpreter (F: UNSPEC) …*)
+		; makeinterpreter_functor self sem remappings sem_init (* module MakeInterpreter (F: UNSPEC) …*)
 		]
 	in
 	ast

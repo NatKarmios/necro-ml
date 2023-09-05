@@ -394,18 +394,32 @@ let rec print_module_type_tld ff decl =
 let rec print_functor_tld ff decl =
 	begin match decl with
 	| MTypeDefs defs -> print_type_defs ff defs
+	| MTypeNonRec def -> print_type_def "type nonrec" ff def
 	| MRecValDefs defs -> print_term_defs ff defs
 	| MValDef def -> print_term_def "let" ff def
 	| MInclude path -> fprintf ff "include %s" (String.concat "." path)
 	| MException (name, ty) ->
 			fprintf ff "exception %s of %a" name print_type ty
 	| MOpen path -> fprintf ff "open %s" (String.concat "." path)
+	| MOpenStruct decls ->
+			fprintf ff "@[<v 2>open struct@,%a@]@,end"
+			(pp_print_list
+					~pp_sep:(fun ff () -> fprintf ff "@,")
+					print_functor_tld) decls
+	| MModule (name, decls) ->
+			fprintf ff "@[<v 2>module %s = struct@,%a@]@,end"
+			name (pp_print_list
+					~pp_sep:(fun ff () -> fprintf ff "@,")
+					print_functor_tld) decls
 	| MModuleAlias (name, def) ->
 			fprintf ff
 				"module %s = %s"
 				name (String.concat "." def) 
+	| MComment c -> fprintf ff "(**%s*)" c
 	| MBlock decls ->
-			pp_print_list print_functor_tld ff decls
+			(pp_print_list
+					~pp_sep:(fun ff () -> fprintf ff "@,")
+					print_functor_tld) ff decls
 	end
 
 let rec clean_moduletype body =
