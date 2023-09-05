@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 0.3.1
+- Fix issue #8
+
 ## Version 0.3
 - Update to use with Necro Lib 0.14.6
 - Do not use `let rec` for all terms, but instead use it only when necessary

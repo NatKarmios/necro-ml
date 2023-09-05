@@ -127,7 +127,7 @@ let rec get_term_of_term self sem t =
 			end
 			else
 			let l = List.init (List.length tyl) (fun j ->
-				if j = i - 1 then MLPVar "j" else MLPWild)
+				if j = i - 1 then MLPVar "x" else MLPWild)
 			in
 			let pattern = MLPTuple l in
 			MLTLetIn (pattern, get_term_of_term self sem t, MLTVar ([], "x"))
