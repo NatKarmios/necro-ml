@@ -54,4 +54,11 @@ release:
 	cd ../opam-repository; \
 		git add packages/necroml && git commit -am "Push new Necro ML version" && git push
 
-.PHONY: opam_update new_version release nothing
+rerelease:
+	@git tag -f v$(VERSION)
+	@git push --tags --force
+	@make opam_update
+	cd ../opam-repository; \
+		git add packages/necroml && git commit -am "Upstream change for Necro ML" && git push
+
+.PHONY: opam_update new_version release rerelease nothing
