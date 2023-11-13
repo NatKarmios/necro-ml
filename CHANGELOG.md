@@ -2,6 +2,7 @@
 
 ## 0.3.1
 - Do not use `let rec` for all terms, but instead use it only when necessary
+- Fix
 
 ## Version 0.3
 - Update to use with Necro Lib 0.14.5
