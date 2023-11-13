@@ -66,7 +66,7 @@ let rec get_pattern self sem p =
 	| PConstr ((c, _), PTuple []) ->
 			(* if input type for constructor ty is () then the () is ignored. But if
 				 it is polymorphic, then OCaml expects the () to be present *)
-			let cdef = Skeleton.get_constructor_signature self [] sem c in
+			let cdef = Skeleton.get_constructor_signature [] self sem c in
 			let input = cdef.cs_input_type in
 			if input = Product [] then
 				MLPConstr (c.obj, None)
@@ -97,7 +97,7 @@ let rec get_term_of_term self sem t =
 	| TConstr ((c, _), {tdesc=TTuple [];_}) ->
 			(* if input type for constructor ty is () then the () is ignored. But if
 				 it is polymorphic, then OCaml expects the () to be present *)
-			let cdef = Skeleton.get_constructor_signature self [] sem c in
+			let cdef = Skeleton.get_constructor_signature [] self sem c in
 			let input = cdef.cs_input_type in
 			if input = Product [] then
 				MLTConstr (c.obj, None)
@@ -109,7 +109,7 @@ let rec get_term_of_term self sem t =
 	| TTuple tl ->
 			MLTTuple (List.map (get_term_of_term self sem) tl)
 	| TFunc (p, s) ->
-			if Skeleton.is_exhaustive self [] sem [p] then
+			if Skeleton.is_exhaustive [] self sem [p] then
 				MLTFunc (get_pattern self sem p, get_term_of_skel self sem s)
 			else
 				MLTFunction (
@@ -150,7 +150,7 @@ and get_term_of_skel self sem s =
 				get_term_of_term self sem f :: get_term_of_term self sem x :: []
 			)
 	| LetIn (NoBind, p, s1, s2) ->
-			if Skeleton.is_exhaustive self [] sem [p]
+			if Skeleton.is_exhaustive [] self sem [p]
 		then
 			MLTLetStarIn (
 				get_pattern self sem p,
@@ -183,7 +183,7 @@ and get_term_of_skel self sem s =
 	| LetIn (
 		( TermBind (_, b, _, _) |
 			SymbolBind (_, _, b, _, _)), p, s1, s2) ->
-			if Skeleton.is_exhaustive self [] sem [p] then
+			if Skeleton.is_exhaustive [] self sem [p] then
 				begin match s1.sdesc with
 				| Return t1 ->
 						(* bind (t1, λ p → s2) *)
@@ -266,32 +266,34 @@ let get_term_definitions self sem =
 		| Some x -> x
 		end
 	in
-	let dep = Skeleton.dependency_graph self sem in
-	let scc = Skeleton.PGraph.scc dep in
-	let scc_map =
-		List.fold_left (fun m l ->
-			begin match l with
-			| [] -> assert false (* scc failed *)
-			| (_path, a) :: _ -> (* no module at this point anyway *)
-					Util.SMap.add a l m
-			end) Util.SMap.empty scc
+	let dep = Skeleton.dependency_graph [] self sem in
+	let scc_all =
+		let module SCC = Graph.Components.Make(Skeleton.PGraph) in
+		SCC.scc_list dep
 	in
-	let dep_contracted = List.fold_left (fun dep component ->
-		Skeleton.PGraph.contract dep component) dep scc
+	(* scc_all is a list of all strongly connected component of graph [dep],
+		 listed in topological order *)
+	let scc =
+		(* We filter out unspecified terms *)
+		List.map (List.filter (fun (path, name) ->
+			assert (path = Path.Abs.File (self, None));
+			begin match Util.SMap.find_opt name sem.ss_terms with
+			| None -> assert false
+			| Some (_, (_, _, o)) -> Option.is_some o
+			end)) scc_all
+		|> List.filter ((<>) []) |> List.rev
 	in
-	let topo = Skeleton.PGraph.topo_sort dep_contracted in
-	List.map (fun (_, v) ->
-		let terms = Util.SMap.find v scc_map in
+	List.map (fun terms ->
 		begin match terms with
 		| [] -> assert false (* contains at least v *)
 		| _ :: _ :: _ -> (* at least two recursive terms *)
 				MRecValDefs (List.map def terms)
 		| t :: [] ->
-				let t_out = Skeleton.PGraph.next dep t in
+				let t_out = Skeleton.PGraph.succ dep t in
 				let recursive = List.mem t t_out in
 				if recursive then MRecValDefs [def t]
 				else MValDef (def t)
-		end) topo
+		end) scc
 
 
 (* returns [type t] for all unspecified types *)
@@ -334,7 +336,7 @@ let get_terms_not_implemented self sem =
 	let terms =
 		sem.ss_terms
 		|> Util.SMap.filter (fun _ (_, (_, ty, t)) ->
-				begin match t, Skeleton.unalias self [] sem ty with
+				begin match t, Skeleton.unalias [] self sem ty with
 				| None, Arrow _ -> true | _ -> false
 				end)
 		|> Util.SMap.bindings
@@ -453,7 +455,7 @@ let get_opens sem: module_tld list =
 *)
 
 (* recreate the module structure (unflatten) *)
-let remake_module (remappings:Transformation.remapping) sem_init self =
+let remake_module sem_collapsed (remappings:Transformation.remapping) sem_init self =
 	let open Transformation in
 	let rec aux sem path =
 		let make_decl d =
@@ -465,8 +467,21 @@ let remake_module (remappings:Transformation.remapping) sem_init self =
 						| None -> x
 						end
 					in
-					Some (MTypeNonRec (MLTDAlias (None, [(* FIXME *)], x,
-						MLTyBase (fullname, [(* FIXME *)]))))
+					let ta =
+						begin match Util.SMap.find_opt fullname sem_collapsed.ss_types with
+						| None -> assert false
+						| Some (_, TDUnspec 1) -> ["a"]
+						| Some (_, TDUnspec n) ->
+								List.init n (fun i -> Format.sprintf "a%d" (i+1))
+						| Some (_, TDVariant (ta, _))
+						| Some (_, TDRecord (ta, _))
+						| Some (_, TDAlias (ta, _)) ->
+								ta
+						end
+					in
+					let var a = MLTyVar a in
+					Some (MTypeNonRec (MLTDAlias (None, ta, x,
+						MLTyBase (fullname, List.map var ta))))
 			| ParsedAST.TermDecl x ->
 					let fullname =
 						begin match PMap.find_opt (path, x) remappings.terms with
@@ -496,7 +511,7 @@ let makeinterpreter_functor self sem remappings sem_init =
 		; MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind"))
 		] @
 		MOpenStruct (get_term_definitions self sem)
-		:: remake_module remappings sem_init self
+		:: remake_module sem remappings sem_init self
 	in
 	Functor (Some comment, "MakeInterpreter", [args], body)
 
