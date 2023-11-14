@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 0.3.2
+- Protect against ocaml keywords
+
 ## Version 0.3.1
 - Do not use `let rec` for all terms, but instead use it only when necessary
 - Fix issue #8

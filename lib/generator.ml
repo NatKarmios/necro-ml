@@ -30,7 +30,7 @@ open Necrotrans
 
 let tmp = ref "_tmp"
 
-let necro_ocaml_keywords =
+let necro_ocaml_keywords = Util.SSet.of_list
 	[
 	(* OCaml reserved keywords *)
 	"and"; "as"; "asr"; "assert"; "begin"; "class"; "constraint"; "do"; "done";
@@ -548,6 +548,7 @@ let interpreter_module_type sem =
 let generate_interpreter includes (self, sem_init): ast =
 	let sem, remappings =
 		Transformation.flatten_modules ["-f";"-c"] includes (self, sem_init) in
+	let sem = Skeleton.protect_ss necro_ocaml_keywords sem in
 	let version =
 		begin match Build_info.V1.version () with
 		| None -> "N/A"
