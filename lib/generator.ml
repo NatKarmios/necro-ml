@@ -455,12 +455,19 @@ let get_opens sem: module_tld list =
 *)
 
 (* recreate the module structure (unflatten) *)
-let remake_module sem_collapsed (remappings:Transformation.remapping) sem_init self =
+let remake_module sem_collapsed (remappings:Transformation.remapping)
+  (protect: Skeleton.protect_remapping) sem_init self =
 	let open Transformation in
 	let rec aux sem path =
 		let make_decl d =
 			begin match d with
 			| ParsedAST.TypeDecl x ->
+          let x =
+            begin match Util.SMap.find_opt x protect.types with
+            | None -> x
+            | Some x' -> x'
+            end
+          in
 					let fullname =
 						begin match PMap.find_opt (path, x) remappings.types with
 						| Some x' -> x'
@@ -483,6 +490,12 @@ let remake_module sem_collapsed (remappings:Transformation.remapping) sem_init s
 					Some (MTypeNonRec (MLTDAlias (None, ta, x,
 						MLTyBase (fullname, List.map var ta))))
 			| ParsedAST.TermDecl x ->
+          let x =
+            begin match Util.SMap.find_opt x protect.terms with
+            | None -> x
+            | Some x' -> x'
+            end
+          in
 					let fullname =
 						begin match PMap.find_opt (path, x) remappings.terms with
 						| Some x' -> x'
@@ -503,7 +516,7 @@ let remake_module sem_collapsed (remappings:Transformation.remapping) sem_init s
 	in aux sem_init (Path.Abs.File (self, None))
 
 (* writes the MakeInterpreter functor *)
-let makeinterpreter_functor self sem remappings sem_init =
+let makeinterpreter_functor self sem remappings protect sem_init =
 	let comment = " Module defining the specified terms " in
 	let args = ("F",["UNSPEC"],[])  in
 	let body =
@@ -511,7 +524,7 @@ let makeinterpreter_functor self sem remappings sem_init =
 		; MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind"))
 		] @
 		MOpenStruct (get_term_definitions self sem)
-		:: remake_module sem remappings sem_init self
+		:: remake_module sem remappings protect sem_init self
 	in
 	Functor (Some comment, "MakeInterpreter", [args], body)
 
@@ -546,9 +559,33 @@ let interpreter_module_type sem =
 
 (* writes the interpreter generator modules to stdout *)
 let generate_interpreter includes (self, sem_init): ast =
+  let open Transformation in
 	let sem, remappings =
 		Transformation.flatten_modules ["-f";"-c"] includes (self, sem_init) in
-	let sem = Skeleton.protect_ss necro_ocaml_keywords sem in
+	let sem, protect = Skeleton.protect_ss necro_ocaml_keywords sem in
+  let fix_mappings map fix n =
+    PMap.fold (fun (p, x) res accu ->
+      (* the only remapped stuff are from self *)
+      if p <> File (self, None) then
+        begin print_endline ("B " ^ n ^ x) ;
+        PMap.add (p, x) res accu end
+      else
+        begin
+          print_endline ("A " ^ n ^ x) ;
+        match Util.SMap.find_opt x fix with
+        | None -> PMap.add (p, x) res accu
+        | Some x' -> PMap.add (p, x') x' accu
+        end)
+    map PMap.empty
+  in
+  let remappings =
+    Transformation.{
+      constructors = remappings.constructors
+    ; fields = fix_mappings remappings.fields protect.fields "f "
+    ; types = fix_mappings remappings.types protect.types "τ "
+    ; terms = fix_mappings remappings.terms protect.terms "t "
+    ; binders = remappings.binders }
+  in
 	let version =
 		begin match Build_info.V1.version () with
 		| None -> "N/A"
@@ -565,7 +602,7 @@ let generate_interpreter includes (self, sem_init): ast =
 		; unspec_module_type sem (* module type UNSPEC *)
 		; unspec_functor self sem (* module Unspec (M:MONAD) (T:TYPES) *)
 		; interpreter_module_type sem (* module type INTERPRETER *)
-		; makeinterpreter_functor self sem remappings sem_init (* module MakeInterpreter (F: UNSPEC) …*)
+		; makeinterpreter_functor self sem remappings protect sem_init (* module MakeInterpreter (F: UNSPEC) …*)
 		]
 	in
 	ast
