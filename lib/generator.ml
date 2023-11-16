@@ -520,10 +520,11 @@ let makeinterpreter_functor self sem remappings protect sem_init =
 	let comment = " Module defining the specified terms " in
 	let args = ("F",["UNSPEC"],[])  in
 	let body =
-		[ MInclude ["F"]
-		; MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind"))
-		] @
-		MOpenStruct (get_term_definitions self sem)
+		MModuleAlias ("M", ["F"; "M"]) ::
+		MOpenStruct (
+			MInclude ["F"] ::
+			MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind")) ::
+			get_term_definitions self sem)
 		:: remake_module sem remappings protect sem_init self
 	in
 	Functor (Some comment, "MakeInterpreter", [args], body)
