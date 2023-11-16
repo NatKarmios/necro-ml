@@ -40,8 +40,8 @@ type constr = string * mltype option * comment option
 type field = string * mltype * comment option
 
 type type_def =
-	| MLTDVariant of comment option * args * type_name * constr list
-	| MLTDRecord of comment option * args * type_name * field list
+	| MLTDVariant of comment option * args * type_name * mltype option * constr list
+	| MLTDRecord of comment option * args * type_name * mltype option * field list
 	| MLTDAlias of comment option * args * type_name * mltype
 
 type mlpattern =

@@ -364,11 +364,11 @@ let specified_types ~comm ss: type_def list =
 	in
 	let variant_type_decls =
 		List.map (fun (ty, ta, c) ->
-			MLTDVariant (get_comm ty, ta, ty, List.map constructor c)) const
+			MLTDVariant (get_comm ty, ta, ty, None, List.map constructor c)) const
 	in
 	let record_type_decls =
 		List.map (fun (ty, ta, f) ->
-			MLTDRecord (get_comm ty, ta, ty, List.map field f)) fields
+			MLTDRecord (get_comm ty, ta, ty, None, List.map field f)) fields
 	in
 	 (variant_type_decls @ record_type_decls)
 
@@ -474,21 +474,40 @@ let remake_module sem_collapsed (remappings:Transformation.remapping)
 						| None -> x
 						end
 					in
-					let ta =
-						begin match Util.SMap.find_opt fullname sem_collapsed.ss_types with
-						| None -> assert false
-						| Some (_, TDUnspec 1) -> ["a"]
-						| Some (_, TDUnspec n) ->
-								List.init n (fun i -> Format.sprintf "a%d" (i+1))
-						| Some (_, TDVariant (ta, _))
-						| Some (_, TDRecord (ta, _))
-						| Some (_, TDAlias (ta, _)) ->
-								ta
-						end
-					in
 					let var a = MLTyVar a in
-					Some (MTypeNonRec (MLTDAlias (None, ta, x,
-						MLTyBase (fullname, List.map var ta))))
+					begin match Util.SMap.find_opt fullname sem_collapsed.ss_types with
+					| None -> assert false
+					| Some (_, TDUnspec 1) ->
+							Some (MTypeNonRec (MLTDAlias (None, ["a"], x,
+							MLTyBase (fullname, [MLTyVar "a"]))))
+					| Some (_, TDUnspec n) ->
+							let ta =
+								List.init n (fun i -> Format.sprintf "a%d" (i+1))
+							in
+							Some (MTypeNonRec (MLTDAlias (None, ta, x,
+								MLTyBase (fullname, List.map var ta))))
+					| Some (_, TDVariant (ta, csl)) ->
+							let constructor c =
+								begin match c.cs_input_type with
+								| Product [] -> (c.cs_name, None, c.cs_comment)
+								| ty -> (c.cs_name, Some (get_type ty), c.cs_comment)
+								end
+							in
+							Some (MTypeNonRec (MLTDVariant (
+								None, ta, x,
+								Some (MLTyBase (fullname, List.map var ta)),
+								List.map constructor csl)))
+					| Some (_, TDRecord (ta, fsl)) ->
+							let field f =
+								(f.fs_name, get_type f.fs_field_type, f.fs_comment) in
+							Some (MTypeNonRec (MLTDRecord (
+								None, ta, x,
+								Some (MLTyBase (fullname, List.map var ta)),
+								List.map field fsl)))
+					| Some (_, TDAlias (ta, _)) ->
+							Some (MTypeNonRec (MLTDAlias (None, ta, x,
+								MLTyBase (fullname, List.map var ta))))
+					end
 			| ParsedAST.TermDecl x ->
           let x =
             begin match Util.SMap.find_opt x protect.terms with
@@ -564,16 +583,13 @@ let generate_interpreter includes (self, sem_init): ast =
 	let sem, remappings =
 		Transformation.flatten_modules ["-f";"-c"] includes (self, sem_init) in
 	let sem, protect = Skeleton.protect_ss necro_ocaml_keywords sem in
-  let fix_mappings map fix n =
+  let fix_mappings map fix =
     PMap.fold (fun (p, x) res accu ->
       (* the only remapped stuff are from self *)
       if p <> File (self, None) then
-        begin print_endline ("B " ^ n ^ x) ;
-        PMap.add (p, x) res accu end
+        PMap.add (p, x) res accu
       else
-        begin
-          print_endline ("A " ^ n ^ x) ;
-        match Util.SMap.find_opt x fix with
+        begin match Util.SMap.find_opt x fix with
         | None -> PMap.add (p, x) res accu
         | Some x' -> PMap.add (p, x') x' accu
         end)
@@ -582,9 +598,9 @@ let generate_interpreter includes (self, sem_init): ast =
   let remappings =
     Transformation.{
       constructors = remappings.constructors
-    ; fields = fix_mappings remappings.fields protect.fields "f "
-    ; types = fix_mappings remappings.types protect.types "τ "
-    ; terms = fix_mappings remappings.terms protect.terms "t "
+    ; fields = fix_mappings remappings.fields protect.fields
+    ; types = fix_mappings remappings.types protect.types
+    ; terms = fix_mappings remappings.terms protect.terms
     ; binders = remappings.binders }
   in
 	let version =

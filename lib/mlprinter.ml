@@ -278,28 +278,45 @@ let print_constr_def ff (name, ty, com) =
 
 let print_type_def beg ff def =
 	begin match def with
-	| MLTDVariant (com, a, name, cl) ->
+	| MLTDVariant (com, a, name, o, cl) ->
+			let o_annot ff =
+				begin match o with
+				| None ->
+						Format.fprintf ff ""
+				| Some ty ->
+						Format.fprintf ff " %a =" print_type ty
+				end
+			in
 			begin match cl with
 			| [] ->
-					fprintf ff "%a@[<v>%s %a = |@]"
+					fprintf ff "%a@[<v>%s %a =%t |@]"
 						print_com_nl com beg
 						print_type (MLTyBase (name, List.map (fun x -> MLTyVar x) a))
+						o_annot
 			| _ ->
-					fprintf ff "%a@[<v>%s %a =@,%a@]"
+					fprintf ff "%a@[<v>%s %a =%t@,%a@]"
 						print_com_nl com beg
 						print_type (MLTyBase (name, List.map (fun x -> MLTyVar x) a))
-						(pp_print_list print_constr_def) cl
+						o_annot (pp_print_list print_constr_def) cl
 			end
-	| MLTDRecord (com, a, name, fl) ->
+	| MLTDRecord (com, a, name, o, fl) ->
+			let o_annot ff =
+				begin match o with
+				| None ->
+						Format.fprintf ff ""
+				| Some ty ->
+						Format.fprintf ff " %a =" print_type ty
+				end
+			in
 			begin match fl with
 			(* records with no fields are indistinguishable to tuples with no
 			   components, and are therefore treated as such *)
 			| [] -> assert false
 			| _ ->
-					fprintf ff "%a@[<v>%s %a = {@,%a@,}@]"
+					fprintf ff "%a@[<v>%s %a =%t {@,%a@,}@]"
 						print_com_nl com beg
 						print_type (MLTyBase (name, List.map (fun x -> MLTyVar x) a))
-						(pp_print_list print_field_def) fl
+						o_annot (pp_print_list print_field_def) fl
 			end
 	| MLTDAlias (com, a, name, ty) ->
 			fprintf ff
