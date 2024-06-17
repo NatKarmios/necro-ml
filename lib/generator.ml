@@ -60,10 +60,10 @@ let rec get_pattern self sem p =
 	let get_record_field ((f, _), p) =
 		(f.obj, get_pattern self sem p)
 	in
-	begin match p with
-	| PWild _ -> MLPWild
-	| PVar (v, _) -> MLPVar v
-	| PConstr ((c, _), PTuple []) ->
+	begin match p.pdesc with
+	| PWild -> MLPWild
+	| PVar v -> MLPVar v
+  | PConstr ((c, _), {pdesc=PTuple [];_}) ->
 			(* if input type for constructor ty is () then the () is ignored. But if
 				 it is polymorphic, then OCaml expects the () to be present *)
 			let cdef = Skeleton.get_constructor_signature [] self sem c in

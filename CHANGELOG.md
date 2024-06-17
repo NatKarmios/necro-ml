@@ -1,5 +1,9 @@
 # Changelog
 
+## Version 0.3.3
+- Protect against ocaml keywords
+- Fix some issues
+
 ## Version 0.3.2
 - Protect against ocaml keywords
 - Fix some issues
