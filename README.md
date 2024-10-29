@@ -7,7 +7,7 @@ At this point the necroml package is not released in the official OPAM repositor
 ### Via `opam`
 
 ```
-opam switch create necro 4.14.1
+opam switch create necro 4.14.1  # or a more recent version
 eval $(opam env)
 opam repository add necro https://gitlab.inria.fr/skeletons/opam-repository.git#necro
 opam install necroml
