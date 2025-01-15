@@ -55,10 +55,10 @@ type mlpattern =
 
 type mlterm =
   | MLTVar of from * string
-  | MLTConstr of string * mlterm option
+  | MLTConstr of from * string * mlterm option
   | MLTTop
   | MLTTuple of mlterm list
-  | MLTRecMake of (string * mlterm) list
+  | MLTRecMake of from * (string * mlterm) list
   | MLTRecWith of mlterm * (string * mlterm) list
   | MLTFunc of mlpattern * mlterm
   | MLTFunction of (mlpattern * mlterm) list

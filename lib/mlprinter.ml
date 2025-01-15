@@ -56,12 +56,12 @@ let print_type_var ff v =
 let rec monoline v =
   begin match v with
   | MLTVar _ -> true
-  | MLTConstr (_c, None) -> true
-  | MLTConstr (_c, Some t) -> monoline t
+  | MLTConstr (_, _c, None) -> true
+  | MLTConstr (_, _c, Some t) -> monoline t
   | MLTTop -> true
   | MLTTuple [] | MLTTuple [_] -> assert false
   | MLTTuple tl -> List.for_all monoline tl
-  | MLTRecMake fl -> List.for_all (fun (_, v) -> monoline v) fl
+  | MLTRecMake (_, fl) -> List.for_all (fun (_, v) -> monoline v) fl
   | MLTRecWith (t, fl) ->
       List.for_all (fun (_, v) -> monoline v) fl && monoline t
   | MLTFunc _ -> false
@@ -170,19 +170,20 @@ let rec print_term ff v =
   begin match v with
   | MLTVar (f, name) ->
       fprintf ff "%a%s" print_from f name
-  | MLTConstr (c, None) ->
-      fprintf ff "%s" c
-  | MLTConstr (c, Some t) ->
-      fprintf ff "%s %a" c print_term_protect t
+  | MLTConstr (f, c, None) ->
+      fprintf ff "%a%s" print_from f c
+  | MLTConstr (f, c, Some t) ->
+      fprintf ff "%a%s %a" print_from f c print_term_protect t
   | MLTTop -> Format.fprintf ff "()"
   | MLTTuple [] | MLTTuple [_] -> assert false
   | MLTTuple tl ->
       fprintf ff "(%a)" (Util.print_list ~sep:", " print_term) tl
-  | MLTRecMake fl ->
+  | MLTRecMake (from, fl) ->
       let print_field ff (n, v) =
         Format.fprintf ff "%s = %a" n print_term v
       in
-      fprintf ff "{%a}" (Util.print_list ~sep:"; " print_field) fl
+      fprintf ff "%a{%a}" print_from from
+      (Util.print_list ~sep:"; " print_field) fl
   | MLTRecWith (t, fl) ->
       let print_field ff (n, v) =
         Format.fprintf ff "%s = %a" n print_term v
@@ -248,10 +249,10 @@ and print_bind ff v =
 
 and print_term_protect ff v =
   begin match v with
-  | MLTVar _ | MLTConstr (_, None) | MLTTop | MLTTuple _ | MLTRecMake _
+  | MLTVar _ | MLTConstr (_, _, None) | MLTTop | MLTTuple _ | MLTRecMake _
   | MLTRecWith _ | MLTField _ | MLTMatchWith _ | MLTString _ | MLTList _ ->
       print_term ff v
-  | MLTConstr (_, Some _) | MLTFunc _ | MLTFunction _ | MLTApp _ | MLTLetIn _
+  | MLTConstr (_, _, Some _) | MLTFunc _ | MLTFunction _ | MLTApp _ | MLTLetIn _
   | MLTLetStarIn _ ->
       Format.fprintf ff "(%a)" print_term v
   end

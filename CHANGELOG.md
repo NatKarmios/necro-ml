@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 0.3.5
+- Update to Necro Lib v0.16.2, handle includes
+
 ## Version 0.3.4
 - Update to Necro Lib v0.16.1, but with no includes for now
 
