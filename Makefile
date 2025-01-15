@@ -31,10 +31,10 @@ nothing:
 new_version:
 	@rm -f $(TGZ) $(MD5TXT)
 	@read -p "Please enter new version (current is $(VERSION)): " g;\
-	sed -i -r "s#archive/v$(VERSION)#archive/v$$g#" ./necroml.opam.template;\
-	sed -i -r "s#v$(VERSION).tar.gz#v$$g.tar.gz#" ./necroml.opam.template;\
-	sed -i -r "s/^VERSION := $(VERSION)/VERSION := $$g/" ./Makefile;\
-	sed -i -r "s/^\(version $(VERSION)\)$$/\(version $$g\)/" ./dune-project;\
+	perl -i -pe "s#archive/v$(VERSION)#archive/v$$g#" ./necroml.opam.template;\
+	perl -i -pe "s#v$(VERSION).tar.gz#v$$g.tar.gz#" ./necroml.opam.template;\
+	perl -i -pe "s/^VERSION := $(VERSION)/VERSION := $$g/" ./Makefile;\
+	perl -i -pe "s/^\(version $(VERSION)\)$$/\(version $$g\)/" ./dune-project;\
 	git commit ./dune-project ./Makefile ./necroml.opam.template -m "Release version $$g";\
 	git tag -a v$$g -fm 'OPAM necroml package for deployment'
 	git push --follow-tags
@@ -43,18 +43,22 @@ opam_update :
 	@rm -f $(TGZ) $(MD5TXT)
 	@wget -q $(GIT_RELEASE)
 	@md5sum $(TGZ) > $(MD5TXT)
-	@sed -i -r 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat $(MD5TXT) | cut -d" " -f 1)'"|' necroml.opam.template
+	@perl -i -pe 's|^(\schecksum: "md5\s*=\s*).*"|\1'$$(cat $(MD5TXT) | cut -d" " -f 1)'"|' necroml.opam.template
 	@dune build
 	@mkdir -p $(OPAM_REPO_GIT)/packages/$(OPAM_NAME)/$(OPAM_NAME).$(VERSION)/
 	@cp necroml.opam $(OPAM_REPO_GIT)/$(OPAM_FILE)
 
 release:
+	cd ../opam-repository; \
+		git pull 2>/dev/null || true
 	make new_version
 	make opam_update
 	cd ../opam-repository; \
 		git add packages/necroml && git commit -am "Push new Necro ML version" && git push
 
 rerelease:
+	cd ../opam-repository; \
+		git pull 2>/dev/null || true
 	@git tag -f v$(VERSION)
 	@git push --tags --force
 	@make opam_update
