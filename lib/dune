@@ -16,7 +16,7 @@
  (name necroml)
  (public_name necroml)
  (package necroml)
- (libraries necrolib necrotrans dune-build-info)
+ (libraries necrolib dune-build-info)
  (modules_without_implementation mlast)
 )
 
