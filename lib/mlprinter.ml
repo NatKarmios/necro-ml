@@ -177,7 +177,7 @@ let rec print_term ff v =
   | MLTTop -> Format.fprintf ff "()"
   | MLTTuple [] | MLTTuple [_] -> assert false
   | MLTTuple tl ->
-      fprintf ff "(%a)" (Util.print_list ~sep:", " print_term) tl
+      fprintf ff "(%a)" (Util.print_list ~sep:", " print_term_protect_tuple) tl
   | MLTRecMake (from, fl) ->
       let print_field ff (n, v) =
         Format.fprintf ff "%s = %a" n print_term v
@@ -254,6 +254,16 @@ and print_term_protect ff v =
       print_term ff v
   | MLTConstr (_, _, Some _) | MLTFunc _ | MLTFunction _ | MLTApp _ | MLTLetIn _
   | MLTLetStarIn _ ->
+      Format.fprintf ff "(%a)" print_term v
+  end
+
+and print_term_protect_tuple ff v =
+  begin match v with
+  | MLTVar _ | MLTConstr (_, _, None) | MLTTop | MLTTuple _ | MLTRecMake _
+  | MLTRecWith _ | MLTField _ | MLTMatchWith _ | MLTString _ | MLTList _
+  | MLTConstr (_, _, Some _) | MLTApp _ ->
+      print_term ff v
+  | MLTFunc _ | MLTFunction _ | MLTLetIn _ | MLTLetStarIn _ ->
       Format.fprintf ff "(%a)" print_term v
   end
 
