@@ -58,12 +58,9 @@ let rec get_type (s: typ) =
         MLTyFrom (["M"], "t", [get_type s2]))
   end
 
-let get_constructor_signature sem c ty =
-  begin match Util.SMap.find ty sem.ss_types with
-  | _, TDVariant (_, csl) ->
-      List.find (fun cs -> cs.cs_name = c) csl
-  | _ -> assert false
-  end
+let get_constructor_signature sem (c, m) _ty =
+  Skeleton.get_constructor_signature (Util.SMap.bindings sem.ss_includes) sem
+  (c, m)
 
 (* get an mlpattern out of a skel pattern *)
 let rec get_pattern sem p =
@@ -73,10 +70,10 @@ let rec get_pattern sem p =
   begin match p.pdesc with
   | PWild -> MLPWild
   | PVar v -> MLPVar v
-  | PConstr (((c, None), (ty, _)), {pdesc=PTuple [];_}) ->
+  | PConstr (((c, m), (ty, _)), {pdesc=PTuple [];_}) ->
       (* if input type for constructor ty is () then the () is ignored. But if
          it is polymorphic, then OCaml expects the () to be present *)
-      let cdef = get_constructor_signature sem c ty in
+      let cdef = get_constructor_signature sem (c, m) ty in
       let input = cdef.cs_input_type in
       if input.tydesc = Product [] then
         MLPConstr (c, None)
@@ -96,9 +93,24 @@ let rec get_pattern sem p =
   end
 
 
-let is_exhaustive sem p =
+let is_exhaustive _sem p =
+  let rec is_tuple_var p =
+    begin match p.pdesc with
+    | PVar _ | PWild -> true
+    | PTuple pl -> List.for_all is_tuple_var pl
+    | PType (p, _) -> is_tuple_var p
+    | PRecord fpl -> List.for_all (fun (_, p) -> is_tuple_var p) fpl
+    | PConstr _ | POr _ -> false
+    end
+  in
+  is_tuple_var p
+  (* TODO : fix
   let wild = {pdesc=PWild;ploc=Util.ghost_loc;ptyp=p.ptyp} in
+  try
   not @@ Skeleton.useful [] sem [[p]] [wild]
+  with Not_found ->
+    print_endline (Necro.Printer.string_of_pattern p); assert false
+    *)
 
 let rec get_term_of_term sem t =
   let get_record_field (((f, _), _), t) =
@@ -114,7 +126,7 @@ let rec get_term_of_term sem t =
   | TConstr (((c, m), (ty, _)), {tdesc=TTuple [];_}) ->
       (* if input type for constructor ty is () then the () is ignored. But if
          it is polymorphic, then OCaml expects the () to be present *)
-      let cdef = get_constructor_signature sem c ty in
+      let cdef = get_constructor_signature sem (c, m) ty in
       let input = cdef.cs_input_type in
       if input.tydesc = Product [] then
         MLTConstr (of_from m, c, None)

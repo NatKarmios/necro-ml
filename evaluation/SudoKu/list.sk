@@ -1,23 +1,23 @@
-open boolean
-open nat
+require boolean
+require nat
 
 type list<a> =
 | Nil | Cons (a, list<a>)
 
-val map<a,b> (f:a → b) (l:list<a>): list<b> =
+val map<a,b> ((f:a → b), (l:list<a>)): list<b> =
 	match l with
 	| Nil → Nil<b>
 	| Cons (x, q) →
 		let y = f x in
-		let r = map<a, b> f q in
+		let r = map<a, b> (f, q) in
 		Cons<b> (y, r)
 	end
 
-val append<a> (l:list<a>) (m:list<a>): list<a> =
+val append<a> ((l:list<a>), (m:list<a>)): list<a> =
 	match l with
 	| Nil → m
 	| Cons (x, q) →
-		let aux = append<a> q m in
+		let aux = append<a> (q, m) in
 		Cons<a> (x, aux)
 	end
 
@@ -26,63 +26,63 @@ val flatten<a> (l:list<list<a>>): list<a> =
 	| Nil → Nil<a>
 	| Cons (x, q) →
 		let aux = flatten<a> q in
-		append<a> x aux
+		append<a> (x, aux)
 	end
 
-val switch<a> (n:nat) (a:a) (l:list<a>): (a, list<a>) =
+val switch<a> ((n:nat::nat), (a:a), (l:list<a>)): (a, list<a>) =
 	let Cons (x, q) = l in
 	match n with
 	| Z → (x, Cons<a> (a, q))
 	| S m →
-		let (gotten, new_list) = switch<a> m a q in
+		let (gotten, new_list) = switch<a> (m, a, q) in
 		(gotten, Cons<a> (x, new_list))
 	end
 
-val nth<a> (n:nat) (l:list<a>): a =
+val nth<a> ((n:nat::nat), (l:list<a>)): a =
 	let Cons (x, q) = l in
 	match n with
 	| Z → x
 	| S m →
-		nth<a> m q
+		nth<a> (m, q)
 	end
 
-val sub<a> (m:nat) (n:nat) (l:list<a>): list<a> =
+val sub<a> ((m:nat::nat), (n:nat::nat), (l:list<a>)): list<a> =
 	(* Extract n elements of the list, beginning at position m *)
 	match (m, n) with
 	| (Z, Z) → Nil<a>
 	| (Z, S n') →
 		let Cons (x, q) = l in
-		let aux = sub<a> Z n' q in
+		let aux = sub<a> (nat::Z, n', q) in
 		Cons<a> (x, aux)
 	| (S m', _) →
 		let S m' = m in
 		let Cons (_, q) = l in
-		sub<a> m' n q
+		sub<a> (m', n, q)
 	end
 
-val exists<a> (f:a → boolean) (l:list<a>): boolean =
+val exists<a> ((f:a → boolean::boolean), (l:list<a>)): boolean::boolean =
 	match l with
-	| Nil → False
+	| Nil → boolean::False
 	| Cons (x, q) →
 		let b = f x in
 		match b with
-		| True → True
-		| False → exists<a> f q
+		| True → boolean::True
+		| False → exists<a> (f, q)
 		end
 	end
 
-val mem<a> (eq:a → a → boolean) (v:a) (l:list<a>): boolean =
-	let f = eq v in
-	exists<a> f l
+val mem<a> ((eq:(a, a) → boolean::boolean), (v:a), (l:list<a>)): boolean::boolean =
+	let f (x:a) = eq (v, x) in
+	exists<a> (f, l)
 
-val forall<a> (f:a → boolean) (l:list<a>): boolean =
+val forall<a> ((f:a → boolean::boolean), (l:list<a>)): boolean::boolean =
 	match l with
-	| Nil → True
+	| Nil → boolean::True
 	| Cons (x, q) →
 		let b = f x in
 		match b with
-		| False → False
-		| True → forall<a> f q
+		| False → boolean::False
+		| True → forall<a> (f, q)
 		end
 	end
 

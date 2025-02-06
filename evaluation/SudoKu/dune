@@ -1,0 +1,3 @@
+(cram
+  (package necroml)
+  (deps %{bin:necroml} list.sk nat.sk boolean.sk sudoku.sk))

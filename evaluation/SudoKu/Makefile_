@@ -2,13 +2,13 @@
 
 all: solve
 
-boolean.ml: ../../necroml
+boolean.ml:
 	../../necroml -d boolean.sk -o boolean.ml
-list.ml: ../../necroml
+list.ml:
 	../../necroml -d list.sk -o list.ml
-nat.ml: ../../necroml
+nat.ml:
 	../../necroml -d nat.sk -o nat.ml
-sudoku.ml: ../../necroml
+sudoku.ml:
 	../../necroml -d sudoku.sk -o sudoku.ml
 
 ../../necroml:

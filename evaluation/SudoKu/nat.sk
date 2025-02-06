@@ -1,32 +1,32 @@
-open boolean
+require boolean
 
 type nat =
 | Z | S nat
 
-val add (a:nat) (b:nat): nat =
+val add ((a:nat), (b:nat)): nat =
 	match a with
 	| Z → b
 	| S a' →
-		let aux = add a' b in
+		let aux = add (a', b) in
 		S aux
 	end
 
-val mul (a:nat) (b:nat): nat =
+val mul ((a:nat), (b:nat)): nat =
 	match a with
 	| Z → Z
 	| S a' →
-		let aux = mul a' b in
-		add aux b
+		let aux = mul (a', b) in
+		add (aux, b)
 	end
 
-val eq (v1:nat) (v2:nat): boolean =
+val eq ((v1:nat), (v2:nat)): boolean::boolean =
 	match (v1, v2) with
-	| (Z, Z) → True
-	| (S a, S b) → eq a b
-	| _ → False
+	| (Z, Z) → boolean::True
+	| (S a, S b) → eq (a, b)
+	| _ → boolean::False
 	end
 
-val neq (v1:nat) (v2:nat): boolean =
-	let eq = eq v1 v2 in
-	neg eq
+val neq ((v1:nat), (v2:nat)): boolean::boolean =
+	let eq = eq (v1, v2) in
+	boolean::neg eq
 
