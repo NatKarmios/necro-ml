@@ -44,10 +44,12 @@ type type_def =
   | MLTDRecord of comment option * args * type_name * mltype option * field list
   | MLTDAlias of comment option * args * type_name * mltype
 
+type constructor = string * string option
+
 type mlpattern =
   | MLPWild
   | MLPVar of string
-  | MLPConstr of string * mlpattern option
+  | MLPConstr of constructor * mlpattern option
   | MLPTop
   | MLPTuple of mlpattern list
   | MLPRecord of (string * mlpattern) list

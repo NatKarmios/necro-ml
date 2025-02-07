@@ -50,6 +50,11 @@ let print_from ff from =
   let print_one ff s = fprintf ff "%s." s in
   Util.print_list ~sep:"" print_one ff from
 
+let print_from' ff (x, from) =
+  match from with
+  | None -> Format.pp_print_string ff x
+  | Some y -> Format.fprintf ff "%s.%s" y x
+
 let print_type_var ff v =
   fprintf ff "'%s" v
 
@@ -141,9 +146,9 @@ let rec print_pattern ff p =
   begin match p with
   | MLPWild -> fprintf ff "_"
   | MLPVar x -> pp_print_string ff x
-  | MLPConstr (c, None) -> fprintf ff "%s"  c
+  | MLPConstr (c, None) -> fprintf ff "%a" print_from' c
   | MLPConstr (c, Some p) ->
-      fprintf ff "%s %a" c print_pattern_protect p
+      fprintf ff "%a %a" print_from' c print_pattern_protect p
   | MLPTop -> fprintf ff "()"
   | MLPTuple pl ->
       let () = assert (List.length pl >= 2) in

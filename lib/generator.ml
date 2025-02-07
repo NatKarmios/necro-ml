@@ -76,11 +76,11 @@ let rec get_pattern sem p =
       let cdef = get_constructor_signature sem (c, m) ty in
       let input = cdef.cs_input_type in
       if input.tydesc = Product [] then
-        MLPConstr (c, None)
+        MLPConstr ((c, Option.map String.capitalize_ascii m), None)
       else
-        MLPConstr (c, Some MLPTop)
-  | PConstr (((c, _), _), p) ->
-      MLPConstr (c, Some (get_pattern sem p))
+        MLPConstr ((c, Option.map String.capitalize_ascii m), Some MLPTop)
+  | PConstr (((c, m), _), p) ->
+      MLPConstr ((c, Option.map String.capitalize_ascii m), Some (get_pattern sem p))
   | PTuple [] ->
       MLPTop
   | PTuple pl ->

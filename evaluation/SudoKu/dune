@@ -1,3 +1,9 @@
 (cram
   (package necroml)
-  (deps %{bin:necroml} list.sk nat.sk boolean.sk sudoku.sk))
+  (deps %{bin:necroml} list.sk nat.sk boolean.sk sudoku.sk
+        ../../monads/necromonads.ml
+        interpreter_boolean.ml
+        interpreter_nat.ml
+        interpreter_list.ml
+        interpreter_sudoku.ml
+        easy.txt))
