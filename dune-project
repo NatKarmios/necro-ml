@@ -1,7 +1,7 @@
 (lang dune 3.4)
 
 (name necroml)
-(version 0.3.5)
+(version 0.3.6)
 
 (generate_opam_files true)
 
