@@ -1,5 +1,8 @@
 # Changelog
 
+## Version 0.3.6
+- Fix a crash when creating a record value defined in another file
+
 ## Version 0.3.5
 - Update to Necro Lib v0.16.2, handle includes
 
