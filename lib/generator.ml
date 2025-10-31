@@ -85,8 +85,9 @@ let rec get_pattern sem p =
       MLPTop
   | PTuple pl ->
       MLPTuple (List.map (get_pattern sem) pl)
-  | PRecord pl ->
-      MLPRecord (List.map get_record_field pl)
+  | PRecord [] -> assert false (* forbidden by lexing *)
+  | PRecord (((((_, path), _), _) :: _ ) as pl) ->
+      MLPRecord (of_from path, List.map get_record_field pl) 
   | POr (p1, p2) ->
       MLPOr (get_pattern sem p1, get_pattern sem p2)
   | PType (p, _) -> get_pattern sem p

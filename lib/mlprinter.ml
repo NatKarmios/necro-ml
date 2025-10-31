@@ -153,11 +153,11 @@ let rec print_pattern ff p =
   | MLPTuple pl ->
       let () = assert (List.length pl >= 2) in
       fprintf ff "(%a)" (Util.print_list ~sep:", " print_pattern) pl
-  | MLPRecord fl ->
+  | MLPRecord (from, fl) ->
       let print_field ff (f, p) =
         fprintf ff "%s = %a" f print_pattern p
       in
-      fprintf ff "{%a}" (Util.print_list ~sep:"; " print_field) fl
+      fprintf ff "%a{%a}" print_from from (Util.print_list ~sep:"; " print_field) fl 
   | MLPOr (p1, p2) ->
       fprintf ff "%a | %a" print_pattern p1 print_pattern p2
   end
