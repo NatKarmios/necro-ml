@@ -32,8 +32,8 @@ let necro_ocaml_keywords = Util.SSet.of_list
   [
   (* OCaml reserved keywords *)
   "and"; "as"; "asr"; "assert"; "begin"; "class"; "constraint"; "do"; "done";
-  "downto"; "else"; "end"; "exception"; "external"; "false"; "for"; "fun";
-  "function"; "functor"; "if"; "in"; "include"; "inherit"; "initializer";
+  "downto"; "effect"; "else"; "end"; "exception"; "external"; "false"; "for";
+  "fun"; "function"; "functor"; "if"; "in"; "include"; "inherit"; "initializer";
   "land"; "lazy"; "let"; "lor"; "lsl"; "lsr"; "lxor"; "match"; "method"; "mod";
   "module"; "open"; "mutable"; "new"; "nonrec"; "object"; "of"; "open"; "or";
   "private"; "rec"; "sig"; "struct"; "then"; "to"; "true"; "try"; "type"; "val";
