@@ -28,7 +28,7 @@ open Mlast
 
 let tmp = ref "_tmp"
 
-let necro_ocaml_keywords = Util.SSet.of_list
+let necro_ocaml_keywords = SSet.of_list
   [
   (* OCaml reserved keywords *)
   "and"; "as"; "asr"; "assert"; "begin"; "class"; "constraint"; "do"; "done";
@@ -58,14 +58,14 @@ let rec get_type (s: typ) =
         MLTyFrom (["M"], "t", [get_type s2]))
   end
 
-let get_constructor_signature sem (c, m) _ty =
-  Skeleton.get_constructor_signature (Util.SMap.bindings sem.ss_includes) sem
+let get_constructor_signature deps sem (c, m) _ty =
+  Skeleton.get_constructor_signature deps sem
   (c, m)
 
 (* get an mlpattern out of a skel pattern *)
-let rec get_pattern sem p =
+let rec get_pattern deps sem p =
   let get_record_field (((f, _), _), p) =
-    (f, get_pattern sem p)
+    (f, get_pattern deps sem p)
   in
   begin match p.pdesc with
   | PWild -> MLPWild
@@ -73,24 +73,26 @@ let rec get_pattern sem p =
   | PConstr (((c, m), (ty, _)), {pdesc=PTuple [];_}) ->
       (* if input type for constructor ty is () then the () is ignored. But if
          it is polymorphic, then OCaml expects the () to be present *)
-      let cdef = get_constructor_signature sem (c, m) ty in
+      let cdef = get_constructor_signature deps sem (c, m) ty in
+      let cdef = Option.get cdef in
       let input = cdef.cs_input_type in
       if input.tydesc = Product [] then
         MLPConstr ((c, Option.map String.capitalize_ascii m), None)
       else
         MLPConstr ((c, Option.map String.capitalize_ascii m), Some MLPTop)
   | PConstr (((c, m), _), p) ->
-      MLPConstr ((c, Option.map String.capitalize_ascii m), Some (get_pattern sem p))
+      MLPConstr ((c, Option.map String.capitalize_ascii m), Some (get_pattern
+      deps sem p))
   | PTuple [] ->
       MLPTop
   | PTuple pl ->
-      MLPTuple (List.map (get_pattern sem) pl)
+      MLPTuple (List.map (get_pattern deps sem) pl)
   | PRecord [] -> assert false (* forbidden by lexing *)
   | PRecord (((((_, path), _), _) :: _ ) as pl) ->
       MLPRecord (of_from path, List.map get_record_field pl) 
   | POr (p1, p2) ->
-      MLPOr (get_pattern sem p1, get_pattern sem p2)
-  | PType (p, _) -> get_pattern sem p
+      MLPOr (get_pattern deps sem p1, get_pattern deps sem p2)
+  | PType (p, _) -> get_pattern deps sem p
   end
 
 
@@ -113,99 +115,100 @@ let is_exhaustive _sem p =
     print_endline (Necro.Printer.string_of_pattern p); assert false
     *)
 
-let rec get_term_of_term sem t =
+let rec get_term_of_term deps sem t =
   let get_record_field (((f, _), _), t) =
-    (f, get_term_of_term sem t)
+    (f, get_term_of_term deps sem t)
   in
   begin match t.tdesc with
   | TVar (LetBound (n, _)) ->
       MLTVar ([], n)
-  | TVar (TopLevel (_, (x, None), _, _)) ->
+  | TVar (TopLevel (_, (x, None), _)) ->
       MLTVar ([], x)
-  | TVar (TopLevel (_, (x, Some m), _, _)) ->
+  | TVar (TopLevel (_, (x, Some m), _)) ->
       MLTVar ([cap m], x)
   | TConstr (((c, m), (ty, _)), {tdesc=TTuple [];_}) ->
       (* if input type for constructor ty is () then the () is ignored. But if
          it is polymorphic, then OCaml expects the () to be present *)
-      let cdef = get_constructor_signature sem (c, m) ty in
+      let cdef = get_constructor_signature deps sem (c, m) ty in
+      let cdef = Option.get cdef in
       let input = cdef.cs_input_type in
       if input.tydesc = Product [] then
         MLTConstr (of_from m, c, None)
       else
         MLTConstr (of_from m, c, Some MLTTop)
   | TConstr (((c, m), _), t) ->
-      MLTConstr (of_from m, c, Some (get_term_of_term sem t))
+      MLTConstr (of_from m, c, Some (get_term_of_term deps sem t))
   | TTuple [] -> MLTTop
   | TTuple tl ->
-      MLTTuple (List.map (get_term_of_term sem) tl)
+      MLTTuple (List.map (get_term_of_term deps sem) tl)
   | TFunc (p, s) ->
       if is_exhaustive sem p then
-        MLTFunc (get_pattern sem p, get_term_of_skel sem s)
+        MLTFunc (get_pattern deps sem p, get_term_of_skel deps sem s)
       else
         MLTFunction (
-          (get_pattern sem p, get_term_of_skel sem s) ::
+          (get_pattern deps sem p, get_term_of_skel deps sem s) ::
         (MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTTop])) :: [])
   | TField (t, ((f, _), _)) ->
-      MLTField (get_term_of_term sem t, f)
+      MLTField (get_term_of_term deps sem t, f)
   | TNth (t, tyl, i) ->
       if List.compare_length_with tyl 2 = 0 then
       begin
         if i = 1 then
-          MLTApp (MLTVar ([], "fst"), [get_term_of_term sem t])
+          MLTApp (MLTVar ([], "fst"), [get_term_of_term deps sem t])
         else
-          MLTApp (MLTVar ([], "snd"), [get_term_of_term sem t])
+          MLTApp (MLTVar ([], "snd"), [get_term_of_term deps sem t])
       end
       else
       let l = List.init (List.length tyl) (fun j ->
         if j = i - 1 then MLPVar "x" else MLPWild)
       in
       let pattern = MLPTuple l in
-      MLTLetIn (pattern, get_term_of_term sem t, MLTVar ([], "x"))
+      MLTLetIn (pattern, get_term_of_term deps sem t, MLTVar ([], "x"))
   | TRecMake [] -> assert false
   | TRecMake (((((_, f), _), _) :: _) as tl) ->
       MLTRecMake (of_from f, List.map get_record_field tl)
   | TRecSet (t, tl) ->
       MLTRecWith (
-        get_term_of_term sem t,
+        get_term_of_term deps sem t,
         List.map get_record_field tl
       )
   end
 
-and get_term_of_skel sem s =
+and get_term_of_skel deps sem s =
   begin match s.sdesc with
   | Return t ->
-      MLTApp (MLTVar (["M"], "ret"), [get_term_of_term sem t])
+      MLTApp (MLTVar (["M"], "ret"), [get_term_of_term deps sem t])
   | Apply (f, x) ->
       MLTApp (
         MLTVar (["M"], "apply"),
-        get_term_of_term sem f :: get_term_of_term sem x :: []
+        get_term_of_term deps sem f :: get_term_of_term deps sem x :: []
       )
   | LetIn (NoBind, p, s1, s2) ->
       if is_exhaustive sem p
     then
       MLTLetStarIn (
-        get_pattern sem p,
-        get_term_of_skel sem s1,
-        get_term_of_skel sem s2
+        get_pattern deps sem p,
+        get_term_of_skel deps sem s1,
+        get_term_of_skel deps sem s2
       )
     else
       begin match s1.sdesc with
       | Return t1 ->
           MLTMatchWith (
-            get_term_of_term sem t1,
+            get_term_of_term deps sem t1,
             [
-              (get_pattern sem p, get_term_of_skel sem s2) ;
+              (get_pattern deps sem p, get_term_of_skel deps sem s2) ;
               (MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTTop]))
             ]
           )
       | _ ->
           MLTLetStarIn (
             MLPVar !tmp,
-            get_term_of_skel sem s1,
+            get_term_of_skel deps sem s1,
             MLTMatchWith (
               MLTVar ([], !tmp),
               [
-                (get_pattern sem p, get_term_of_skel sem s2) ;
+                (get_pattern deps sem p, get_term_of_skel deps sem s2) ;
                 (MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTTop]))
               ]
             )
@@ -219,16 +222,16 @@ and get_term_of_skel sem s =
         | Return t1 ->
             (* bind (t1, λ p → s2) *)
             MLTApp ( MLTVar (of_from m, b),
-              [MLTTuple ( get_term_of_term sem t1 ::
-                MLTFunc (get_pattern sem p, get_term_of_skel sem s2) :: [])])
+              [MLTTuple ( get_term_of_term deps sem t1 ::
+                MLTFunc (get_pattern deps sem p, get_term_of_skel deps sem s2) :: [])])
         | _ ->
             (* let* tmp = s1 in
                bind (tmp, λ p → s2) *)
             MLTLetStarIn (
-              MLPVar !tmp, get_term_of_skel sem s1,
+              MLPVar !tmp, get_term_of_skel deps sem s1,
               MLTApp ( MLTVar (of_from m, b),
                 [MLTTuple (MLTVar ([], !tmp) ::
-                  MLTFunc (get_pattern sem p, get_term_of_skel sem s2) :: [])]
+                  MLTFunc (get_pattern deps sem p, get_term_of_skel deps sem s2) :: [])]
               )
             )
         end
@@ -237,33 +240,35 @@ and get_term_of_skel sem s =
                bind (tmp, s')
                where s' = is the exhaustive version of [λ p → s2] *)
       MLTLetStarIn (
-        MLPVar !tmp, get_term_of_skel sem s1,
+        MLPVar !tmp, get_term_of_skel deps sem s1,
         MLTApp ( MLTVar (of_from m, b),
           [MLTTuple (MLTVar ([], !tmp) ::
-            get_term_of_term sem
-            {tdesc=TFunc (p, s2);tloc=Util.ghost_loc;ttyp=
-              {tydesc=Product [];tyloc=Util.ghost_loc}} :: [])]
+            get_term_of_term deps sem
+            {tdesc=TFunc (p, s2);tloc=Location.ghost_loc;ttyp=
+              {tydesc=Product [];tyloc=Location.ghost_loc}} :: [])]
         )
       )
   | Branching (_, outs) ->
       let branches =
         List.map (fun sk ->
-          MLTFunc (MLPTop, get_term_of_skel sem sk)
+          MLTFunc (MLPTop, get_term_of_skel deps sem sk)
         ) outs
       in
       MLTApp (MLTVar (["M"], "branch"), [MLTList branches])
   | Match ({sdesc=Return tm;_}, outs) ->
       let branches =
-        List.map (Pair.map (get_pattern sem) (get_term_of_skel sem)) outs
+        List.map (fun (p, s) ->
+          (get_pattern deps sem p, get_term_of_skel deps sem s)) outs
       in
-      MLTMatchWith (get_term_of_term sem tm, branches)
+      MLTMatchWith (get_term_of_term deps sem tm, branches)
   | Match (sm, outs) ->
       let branches =
-        List.map (Pair.map (get_pattern sem) (get_term_of_skel sem)) outs
+        List.map (fun (p, s) ->
+          (get_pattern deps sem p, get_term_of_skel deps sem s)) outs
       in
       (* let* _tmp = sm in … *)
       MLTLetStarIn (
-        MLPVar !tmp, get_term_of_skel sem sm,
+        MLPVar !tmp, get_term_of_skel deps sem sm,
         MLTMatchWith (MLTVar ([], !tmp), branches))
   | Exists _ -> failwith "Existentials are not supported by Necro ML yet"
   end
@@ -277,10 +282,10 @@ let get_poly_sig ta (ty: typ) =
 
 
 (* Write the mutually-recursive terms *)
-let get_term_definitions sem =
-  let open Util.SMap in
+let get_term_definitions deps sem =
+  let open SMap in
   let get_term_decl name (ta, ty, t, c) =
-    (name, c, [], get_poly_sig ta ty, get_term_of_term sem t)
+    (name, c, [], get_poly_sig ta ty, get_term_of_term deps sem t)
   in
   let spec_terms =
     sem.ss_terms
@@ -293,12 +298,12 @@ let get_term_definitions sem =
     |> mapi get_term_decl
   in
   let def (t, _path) =
-    begin match Util.SMap.find_opt t spec_terms with
+    begin match SMap.find_opt t spec_terms with
     | None -> assert false
     | Some x -> x
     end
   in
-  let dep = Skeleton.term_dep_graph [] sem in
+  let dep = Skeleton.term_dep_graph SMap.empty sem in
   let scc_all =
     let module SCC = Graph.Components.Make(Skeleton.PGraph) in
     SCC.scc_list dep
@@ -309,7 +314,7 @@ let get_term_definitions sem =
     (* We filter out unspecified terms *)
     List.map (List.filter (fun (name, path) ->
       (path = None) &&
-      begin match Util.SMap.find_opt name sem.ss_terms with
+      begin match SMap.find_opt name sem.ss_terms with
       | None -> assert false
       | Some (_, (_, _, o)) -> Option.is_some o
       end)) scc_all
@@ -335,9 +340,9 @@ let unspec_type_decl sem =
     MTTypeDecl (com, List.init args (fun _ -> None), typename)
   in
   sem.ss_types
-  |> Util.SMap.filter_map (fun _ (com, td) ->
+  |> SMap.filter_map (fun _ (com, td) ->
       begin match td with TDUnspec i -> Some (com, i) | _ -> None end)
-  |> Util.SMap.bindings
+  |> SMap.bindings
   |> List.map (fun (x, (c, i)) -> type_with_comment (c, x, i))
 
 
@@ -349,12 +354,12 @@ let get_term_signatures ~all sem =
   in
   let all_sigs =
     sem.ss_terms
-    |> (if all then Fun.id else Util.SMap.filter (fun _ (_, (_, _, t)) -> t = None))
-    |> Util.SMap.bindings
+    |> (if all then Fun.id else SMap.filter (fun _ (_, (_, _, t)) -> t = None))
+    |> SMap.bindings
   in
   List.map get_term_sig all_sigs
 
-let get_terms_not_implemented includes sem =
+let get_terms_not_implemented deps sem =
   let get_term_not_implemented (name, _) =
     let error =
       (* raise NotImplemented "%name" *)
@@ -367,11 +372,11 @@ let get_terms_not_implemented includes sem =
   in
   let terms =
     sem.ss_terms
-    |> Util.SMap.filter (fun _ (_, (_, ty, t)) ->
-        begin match t, Skeleton.unalias includes sem ty with
+    |> SMap.filter (fun _ (_, (_, ty, t)) ->
+        begin match t, Skeleton.unalias deps sem ty with
         | None, {tydesc=Arrow _;_} -> true | _ -> false
         end)
-    |> Util.SMap.bindings
+    |> SMap.bindings
   in
   List.map get_term_not_implemented terms
 
@@ -389,7 +394,7 @@ let specified_types ~comm ss: type_def list =
   let fields = Skeleton.get_fields_by_type ss in
   let get_comm name =
     if not comm then None else
-    begin match Util.SMap.find_opt name ss.ss_types with
+    begin match SMap.find_opt name ss.ss_types with
     | Some (c, _) -> c
     | None -> failwith "Internal error 1"
     end
@@ -405,7 +410,7 @@ let specified_types ~comm ss: type_def list =
    (variant_type_decls @ record_type_decls)
 
 let get_aliases ss: type_def list =
-  let aliases = Util.SMap.filter_map (fun _ (com, td) ->
+  let aliases = SMap.filter_map (fun _ (com, td) ->
     begin match td with
     | TDAlias (ta, ty) -> Some (com, ta, ty)
     | _ -> None
@@ -414,7 +419,7 @@ let get_aliases ss: type_def list =
   let get_alias (name, (c, ta, ty)) =
     MLTDAlias (c, ta, name, get_type ty)
   in
-  List.map get_alias (Util.SMap.bindings aliases)
+  List.map get_alias (SMap.bindings aliases)
 
 (* Function to extract "with module _ = _" *)
 let with_modules l =
@@ -433,10 +438,10 @@ let get_with l =
   List.map get_one_with l
 
 (* writes the UNSPEC module type *)
-let unspec_module_type dep_map includes sem =
+let unspec_module_type dep_map deps sem =
 	let one_include (i, _) =
 		let l =
-			begin match Util.SMap.find_opt i dep_map with
+			begin match SMap.find_opt i dep_map with
 			| None -> assert false
 			| Some l -> l
 			end
@@ -448,7 +453,7 @@ let unspec_module_type dep_map includes sem =
   let def =
     MTBlock (
       MTModule ("M", ["MONAD"], []) ::
-      List.map one_include includes @
+      List.map one_include (SMap.bindings deps) @
       [MTInclude "TYPES"])
     :: MTTypeDefs (specified_types ~comm:true sem @ get_aliases sem)
     :: MTBlock (get_term_signatures ~all:false sem)
@@ -486,7 +491,7 @@ let get_module_args sem: modargs =
     let name = String.capitalize_ascii n in
     (name, [name; "INTERPRETER"], [("M",["F";"M"])])
   in
-  List.map print_include (Util.SMap.bindings sem.ss_includes)
+  List.map print_include (SMap.bindings sem.ss_deps)
 *)
 
 (*
@@ -494,49 +499,51 @@ let get_opens sem: module_tld list =
   let print_include (n, (_, op)) =
     if op then Some (MOpen [String.capitalize_ascii n]) else None
   in
-  List.filter_map print_include (Util.SMap.bindings sem.ss_includes)
+  List.filter_map print_include (SMap.bindings sem.ss_deps)
 *)
 
 (* writes the MakeInterpreter functor *)
-let makeinterpreter_functor includes sem =
+let makeinterpreter_functor deps sem =
   let comment = " Module defining the specified terms " in
   let args = ("F",["UNSPEC"],[]) ::
-    List.map (fun (i, _) -> (cap i, [cap i;"INTERPRETER"], [])) includes
+    List.map (fun (i, _) ->
+      (cap i, [cap i;"INTERPRETER"], [])) (SMap.bindings deps)
   in
   let body =
     MInclude ["F"] ::
     MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind")) ::
-    get_term_definitions sem
+    get_term_definitions deps sem
   in
   Functor (Some comment, "MakeInterpreter", args, body)
 
-let unspec_functor includes sem =
+let unspec_functor deps sem =
   let com = " A default instantiation " in
   let args =
     ("M", ["MONAD"], [])
     :: ("T", ["TYPES"], [])
     :: List.map (fun (i, _) ->
-      (cap i, [cap i ; "INTERPRETER"], [("M",["M"])])) includes
+      (cap i, [cap i ; "INTERPRETER"], [("M",["M"])])) (SMap.bindings deps)
   in
   let body =
     MBlock (
       MException ("NotImplemented", MLTyString)
       :: MInclude ["T"]
       :: MModuleAlias ("M", ["M"])
-      :: List.map (fun (i, _) -> MModuleAlias (cap i, [cap i])) includes)
+      :: List.map (fun (i, _) ->
+          MModuleAlias (cap i, [cap i])) (SMap.bindings deps))
     :: MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
-    :: MBlock (get_terms_not_implemented includes sem)
+    :: MBlock (get_terms_not_implemented deps sem)
     :: []
   in
   Functor (Some com, "Unspec", args, body)
 
-let interpreter_module_type includes sem =
-  let includes = List.map (fun (i, _) ->
-    MTModule (cap i, [cap i; "INTERPRETER"], [("M",["M"])])) includes in
+let interpreter_module_type deps sem =
+  let deps = List.map (fun (i, _) ->
+    MTModule (cap i, [cap i; "INTERPRETER"], [("M",["M"])])) (SMap.bindings deps) in
   let comment = " The module type for interpreters " in
   let body =
     MTModule ("M", ["MONAD"], [])
-    :: MTBlock includes
+    :: MTBlock deps
     :: MTBlock (unspec_type_decl sem)
     :: MTTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
     :: MTBlock (get_term_signatures ~all:true sem)
@@ -544,25 +551,25 @@ let interpreter_module_type includes sem =
   in
   ModuleType (Some comment, "INTERPRETER", body)
 
-let build_map ss =
+let build_map deps sem =
 	let rec aux map (i, s) =
-		let open Util in
-		let incl = SMap.bindings s.ss_includes in
-		let map = SMap.add i (List.map fst incl) map in
+		let incl_list = SSet.to_list s.ss_includes in
+    let incl = List.map (fun i -> (i, SMap.find i deps)) incl_list in
+		let map = SMap.add i incl_list map in
 		List.fold_left aux map incl
 	in
-	aux Util.SMap.empty ("this", ss)
+	aux SMap.empty ("this", sem)
 
 (* writes the interpreter generator modules to stdout *)
-let generate_interpreter includes (_self, sem): ast =
-  let sem, _protect = Skeleton.protect_ss necro_ocaml_keywords sem in
+let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem): ast =
+  let sem, _protect = Skeleton.protect_sem necro_ocaml_keywords sem in
   let version =
     begin match Build_info.V1.version () with
     | None -> "N/A"
     | Some v -> Build_info.V1.Version.to_string v
     end
   in
-  let dep_map = build_map sem in
+  let dep_map = build_map deps sem in
   let comm = Comment
   (" This file was automatically generated using necroml version " ^ version ^
   ".\nSee https://gitlab.inria.fr/skeletons/necro-ml/ for more informations. ") in
@@ -570,10 +577,10 @@ let generate_interpreter includes (_self, sem): ast =
     [ comm
     ; types_module_type sem (* module type TYPES *)
     ; monad_module_type sem (* module type MONAD *)
-    ; unspec_module_type dep_map includes sem (* module type UNSPEC *)
-    ; unspec_functor includes sem (* module Unspec (M:MONAD) (T:TYPES) *)
-    ; interpreter_module_type includes sem (* module type INTERPRETER *)
-    ; makeinterpreter_functor includes sem (* module MakeInterpreter (F: UNSPEC) …*)
+    ; unspec_module_type dep_map deps sem (* module type UNSPEC *)
+    ; unspec_functor deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
+    ; interpreter_module_type deps sem (* module type INTERPRETER *)
+    ; makeinterpreter_functor deps sem (* module MakeInterpreter (F: UNSPEC) …*)
     ]
   in
   ast

@@ -14,7 +14,6 @@
 
 open Mlast
 open Format
-open Necro
 
 let fail () = ()
 
@@ -37,6 +36,14 @@ let print_space_com ff com =
   | Some _ -> fprintf ff " %a" print_com com
   end
 
+let print_list ?(sep="") ?(empty=fun _ -> ()) print ff =
+  begin function
+  | [] -> empty ff
+  | l -> Format.pp_print_list ~pp_sep:(fun ff () -> Format.fprintf ff "%s" sep)
+  print ff l
+  end
+
+
 let print_with ff withes =
   let print_one_with ff (name, def) =
     fprintf ff
@@ -44,11 +51,11 @@ let print_with ff withes =
       name
       (String.concat "." def)
   in
-  Util.print_list ~sep:"" print_one_with ff withes
+  print_list ~sep:"" print_one_with ff withes
 
 let print_from ff from =
   let print_one ff s = fprintf ff "%s." s in
-  Util.print_list ~sep:"" print_one ff from
+  print_list ~sep:"" print_one ff from
 
 let print_from' ff (x, from) =
   match from with
@@ -93,7 +100,7 @@ let rec print_type ff ty =
           fprintf ff "%a %a%s" print_type_protect a print_from from s
       | args    ->
           fprintf ff "(%a) %a%s"
-          (Util.print_list ~sep:", " print_type) args print_from from s
+          (print_list ~sep:", " print_type) args print_from from s
       end
   | MLTyBase (s, args) -> print_type ff (MLTyFrom ([], s, args))
   | MLTyUnit -> fprintf ff "unit"
@@ -107,7 +114,7 @@ let rec print_type ff ty =
       end
   | MLTyTuple tl ->
       let () = assert (List.length tl >= 2) in
-      Util.print_list ~sep:" * " print_type_prod_comp ff tl
+      print_list ~sep:" * " print_type_prod_comp ff tl
   end
 
 and print_type_prod_comp ff ty =
@@ -152,12 +159,12 @@ let rec print_pattern ff p =
   | MLPTop -> fprintf ff "()"
   | MLPTuple pl ->
       let () = assert (List.length pl >= 2) in
-      fprintf ff "(%a)" (Util.print_list ~sep:", " print_pattern) pl
+      fprintf ff "(%a)" (print_list ~sep:", " print_pattern) pl
   | MLPRecord (from, fl) ->
       let print_field ff (f, p) =
         fprintf ff "%s = %a" f print_pattern p
       in
-      fprintf ff "%a{%a}" print_from from (Util.print_list ~sep:"; " print_field) fl 
+      fprintf ff "%a{%a}" print_from from (print_list ~sep:"; " print_field) fl 
   | MLPOr (p1, p2) ->
       fprintf ff "%a | %a" print_pattern p1 print_pattern p2
   end
@@ -182,20 +189,20 @@ let rec print_term ff v =
   | MLTTop -> Format.fprintf ff "()"
   | MLTTuple [] | MLTTuple [_] -> assert false
   | MLTTuple tl ->
-      fprintf ff "(%a)" (Util.print_list ~sep:", " print_term_protect_tuple) tl
+      fprintf ff "(%a)" (print_list ~sep:", " print_term_protect_tuple) tl
   | MLTRecMake (from, fl) ->
       let print_field ff (n, v) =
         Format.fprintf ff "%s = %a" n print_term v
       in
       fprintf ff "%a{%a}" print_from from
-      (Util.print_list ~sep:"; " print_field) fl
+      (print_list ~sep:"; " print_field) fl
   | MLTRecWith (t, fl) ->
       let print_field ff (n, v) =
         Format.fprintf ff "%s = %a" n print_term v
       in
       fprintf ff
         "{%a with %a}" print_term t
-        (Util.print_list ~sep:"; " print_field) fl
+        (print_list ~sep:"; " print_field) fl
   | MLTFunc (p, t) ->
       fprintf ff "function %a ->@,%a" print_pattern_protect p print_term t
   | MLTFunction l ->
@@ -206,7 +213,7 @@ let rec print_term ff v =
       fprintf ff "%a.%s" print_term t n
   | MLTApp (t, tl) ->
       fprintf ff "@[<v 2>%a %a@]" print_term_protect t
-      (Util.print_list ~sep:" " print_term_protect) tl
+      (print_list ~sep:" " print_term_protect) tl
   | MLTLetIn (p, bound, body) ->
       fprintf ff "@[<v 2>let %a =%ain@,%a"
       print_pattern p
@@ -276,7 +283,7 @@ let print_poly_type ff (MLTyPoly (ta, ty)) =
   begin match ta with
   | [] -> print_type ff ty
   | _ -> fprintf ff "%a. %a"
-    (Util.print_list ~sep:" " print_type_var) ta print_type ty
+    (print_list ~sep:" " print_type_var) ta print_type ty
   end
 
 let print_field_def ff (name, ty, com) =
@@ -367,14 +374,14 @@ let rec print_term_def beg ff (name, com, args, ty, def) =
       | None ->
         fprintf ff "%a@[<v 2>%s %s %a=%t%a@]"
           print_com_nl com beg name
-          (Util.print_list ~sep:"" (fun ff x ->
+          (print_list ~sep:"" (fun ff x ->
             Format.fprintf ff "%s " x)) args
           post_equal
           print_term def
       | Some ty ->
         fprintf ff "%a@[<v 2>%s %s: %a %a =%t%a@]"
           print_com_nl com beg name print_poly_type ty
-          (Util.print_list ~sep:" " pp_print_string) args
+          (print_list ~sep:" " pp_print_string) args
           post_equal
           print_term def
       end
@@ -406,7 +413,7 @@ let rec print_module_type_tld ff decl =
             fprintf ff "%a " print_arg arg
         | _ ->
             fprintf ff
-              "(%a) " (Util.print_list ~sep:", " print_arg) args
+              "(%a) " (print_list ~sep:", " print_arg) args
         end
       in
       fprintf ff
@@ -510,7 +517,7 @@ let print_tld ff decl =
         "%a@[<v 2>module %s %a= struct@,%a@]@.end"
         print_com_nl com
         name
-        (Util.print_list ~sep:"" print_arg) args
+        (print_list ~sep:"" print_arg) args
         (pp_print_list
           ~pp_sep:(fun ff () -> fprintf ff "\n@,")
           print_functor_tld) body
@@ -521,7 +528,7 @@ let print_tld ff decl =
 let print_ast ast =
   let ff = str_formatter in
   let () =
-    Util.print_list ~sep:"\n\n" print_tld ff ast
+    print_list ~sep:"\n\n" print_tld ff ast
   in
   flush_str_formatter ()
 

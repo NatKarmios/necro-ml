@@ -1,12 +1,13 @@
 # Changelog
 
+## Version 0.4
+- Update to Necro Lib version 0.17.1
 ## Version 0.3.8
 - Fix [issue #13]()https://gitlab.inria.fr/skeletons/necro-ml/-/issues/13
 
 ## Version 0.3.7
 - Fix [issue #9]()https://gitlab.inria.fr/skeletons/necro-ml/-/issues/9
 - Fix [issue #11]()https://gitlab.inria.fr/skeletons/necro-ml/-/issues/11
-
 
 ## Version 0.3.6
 - Fix a crash when creating a record value defined in another file
