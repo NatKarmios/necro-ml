@@ -264,7 +264,7 @@ and get_term_of_skel sem s =
       (* let* _tmp = sm in … *)
       MLTLetStarIn (
         MLPVar !tmp, get_term_of_skel sem sm,
-        MLTMatchWith (get_term_of_skel sem sm, branches))
+        MLTMatchWith (MLTVar ([], !tmp), branches))
   | Exists _ -> failwith "Existentials are not supported by Necro ML yet"
   end
 
