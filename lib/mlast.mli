@@ -52,7 +52,7 @@ type mlpattern =
   | MLPConstr of constructor * mlpattern option
   | MLPTop
   | MLPTuple of mlpattern list
-  | MLPRecord of from * (string * mlpattern) list
+  | MLPRecord of from * (string * mlpattern) list * bool (* bool: all fields are matched *)
   | MLPOr of mlpattern * mlpattern
 
 type mlterm =

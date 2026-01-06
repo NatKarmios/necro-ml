@@ -88,8 +88,14 @@ let rec get_pattern deps sem p =
   | PTuple pl ->
       MLPTuple (List.map (get_pattern deps sem) pl)
   | PRecord [] -> assert false (* forbidden by lexing *)
-  | PRecord (((((_, path), _), _) :: _ ) as pl) ->
-      MLPRecord (of_from path, List.map get_record_field pl) 
+  | PRecord (((((_, path), (typname, _)), _) :: _ ) as pl) ->
+     let (_, typdef) = SMap.find typname sem.ss_types in
+     begin match typdef with
+     | TDUnspec _ | TDVariant _ | TDAlias _ -> assert false
+     | TDRecord (_, fss) ->
+        let all_field_matched = List.length fss = List.length pl in
+        MLPRecord (of_from path, List.map get_record_field pl, all_field_matched)
+     end
   | POr (p1, p2) ->
       MLPOr (get_pattern deps sem p1, get_pattern deps sem p2)
   | PType (p, _) -> get_pattern deps sem p
