@@ -102,14 +102,27 @@ let rec get_pattern deps sem p =
   end
 
 
-let is_exhaustive _sem p =
+let is_exhaustive sem p =
   let rec is_tuple_var p =
     begin match p.pdesc with
     | PVar _ | PWild -> true
     | PTuple pl -> List.for_all is_tuple_var pl
     | PType (p, _) -> is_tuple_var p
     | PRecord fpl -> List.for_all (fun (_, p) -> is_tuple_var p) fpl
-    | PConstr _ | POr _ -> false
+    | PConstr ((_, (typname, _)), p) ->
+       (* Matching on a constructor is exhaustive if the variant has only one
+          alternative *)
+       begin match SMap.find_opt typname sem.ss_types with
+       | None -> false
+       | Some (_, td) ->
+          begin match td with
+          | TDUnspec _ | TDRecord _ -> assert false
+          | TDAlias _ -> false (* TODO: alias indirection *)
+          | TDVariant (_, [_]) -> is_tuple_var p
+          | TDVariant (_, _) -> false
+          end
+       end
+    | POr _ -> false
     end
   in
   is_tuple_var p
