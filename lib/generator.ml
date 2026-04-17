@@ -535,6 +535,23 @@ let makeinterpreter_functor deps sem =
   in
   Functor (Some comment, "MakeInterpreter", args, body)
 
+let alltypes_functor deps sem =
+  let com = " All available types " in
+  let args =
+    ("T", ["TYPES"], [])
+    :: List.map (fun (i, _) ->
+           (cap i, [cap i ; "INTERPRETER"], [("M",["M"])])) (SMap.bindings deps)
+  in
+  let body =
+    MBlock (
+        MInclude ["T"]
+        :: List.map (fun (i, _) ->
+               MModuleAlias (cap i, [cap i])) (SMap.bindings deps))
+    :: MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
+    :: []
+  in
+  Functor (Some com, "AllTypes", args, body)
+
 let unspec_functor deps sem =
   let com = " A default instantiation " in
   let args =
@@ -595,6 +612,7 @@ let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem): ast =
   let ast =
     [ comm
     ; types_module_type sem (* module type TYPES *)
+    ; alltypes_functor deps sem (* module AllTypes (T:TYPES) *)
     ; monad_module_type sem (* module type MONAD *)
     ; unspec_module_type dep_map deps sem (* module type UNSPEC *)
     ; unspec_functor deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
