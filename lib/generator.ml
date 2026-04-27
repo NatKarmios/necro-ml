@@ -597,7 +597,7 @@ let build_map deps sem =
 	aux SMap.empty ("this", sem)
 
 (* writes the interpreter generator modules to stdout *)
-let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem): ast =
+let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem) (alltypes: bool): ast =
   let sem, _protect = Skeleton.protect_sem necro_ocaml_keywords sem in
   let version =
     begin match Build_info.V1.version () with
@@ -608,16 +608,26 @@ let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem): ast =
   let dep_map = build_map deps sem in
   let comm = Comment
   (" This file was automatically generated using necroml version " ^ version ^
-  ".\nSee https://gitlab.inria.fr/skeletons/necro-ml/ for more informations. ") in
+     ".\nSee https://gitlab.inria.fr/skeletons/necro-ml/ for more informations. ") in
   let ast =
-    [ comm
-    ; types_module_type sem (* module type TYPES *)
-    ; alltypes_functor deps sem (* module AllTypes (T:TYPES) *)
-    ; monad_module_type sem (* module type MONAD *)
-    ; unspec_module_type dep_map deps sem (* module type UNSPEC *)
-    ; unspec_functor deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
-    ; interpreter_module_type deps sem (* module type INTERPRETER *)
-    ; makeinterpreter_functor deps sem (* module MakeInterpreter (F: UNSPEC) …*)
-    ]
+    if alltypes then
+      [ comm
+      ; types_module_type sem (* module type TYPES *)
+      ; alltypes_functor deps sem (* module AllTypes (T:TYPES) *)
+      ; monad_module_type sem (* module type MONAD *)
+      ; unspec_module_type dep_map deps sem (* module type UNSPEC *)
+      ; unspec_functor deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
+      ; interpreter_module_type deps sem (* module type INTERPRETER *)
+      ; makeinterpreter_functor deps sem (* module MakeInterpreter (F: UNSPEC) …*)
+      ]
+    else
+      [ comm
+      ; types_module_type sem (* module type TYPES *)
+      ; monad_module_type sem (* module type MONAD *)
+      ; unspec_module_type dep_map deps sem (* module type UNSPEC *)
+      ; unspec_functor deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
+      ; interpreter_module_type deps sem (* module type INTERPRETER *)
+      ; makeinterpreter_functor deps sem (* module MakeInterpreter (F: UNSPEC) …*)
+      ]
   in
   ast

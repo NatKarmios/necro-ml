@@ -49,6 +49,8 @@ let usage () =
   \t-i [FILE]/ --interface [FILE]\tGet the given skeletal interface to be the
   signature for the interpreter\n\
   \t-w / --warnings\tChoose warnings to print, using a comma-separated list.\n\
+  \t-a / --alltypes\tGenerate the AllTypes functor, only works for \
+  first-order types.\n\  
   \t-o [FILE]/ --output [FILE]\tOutputs the result in given file. If this
   option is not provided, the result is printed in stdout.\n")
   Sys.argv.(0) ; exit 1
@@ -58,6 +60,7 @@ type minus =
 | Output of string
 | Interface of string
 | Warnings of string
+| AllTypes
 
 let parse l =
   let rec parse accu_files accu_options l =
@@ -76,6 +79,8 @@ let parse l =
         parse accu_files (Interface f :: accu_options) q
     | "-w" :: x :: q | "--warnings" :: x :: q ->
         parse accu_files (Warnings x :: accu_options) q
+    | "-a" :: q | "--alltypes" :: q ->
+        parse accu_files (AllTypes :: accu_options) q
     | a :: q ->
         parse (a :: accu_files) accu_options q
     end
@@ -143,7 +148,7 @@ let () =
     end
   in
   let ml_ast =
-    wrap (lazy (Generator.generate_interpreter deps (get_basename f, sem))) in
+    wrap (lazy (Generator.generate_interpreter deps (get_basename f, sem) (List.mem AllTypes options))) in
   let result = Mlprinter.print_ast ml_ast in
   Necro.Printer.print_in_file result output_file
 
