@@ -2,3 +2,5 @@
 *.tar.gz.md5sum.txt
 _build
 *.opam
+_opam
+.direnv
