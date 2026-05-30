@@ -133,20 +133,11 @@ let () =
         end
     end
   in
-  let (deps, sem) = 
-    begin match d with
-    | Some deps_files ->
-        let deps = wrap @@ lazy (Necro.parse_and_type_list deps_files) in
-        let sem = wrap @@ lazy (Necro.parse_and_type ~warn deps f) in
-        (deps, sem)
-    | None ->
-        let imports, parsed_ast = wrap @@ lazy (Necro.parse_file f) in
-        let deps_files = wrap @@ lazy (Necro.find_deps [Filename.dirname f] imports) in
-        let deps = wrap @@ lazy (Necro.parse_and_type_list deps_files) in
-        let sem = wrap @@ lazy (Necro.type_ast ~warn deps (imports, parsed_ast)) in
-        (deps, sem)
-    end
+  let depfiles, depdirs = match d with
+  | Some depfiles -> depfiles, []
+  | None -> [], [Filename.dirname f]
   in
+  let sem, deps = wrap @@ lazy (Necro.parse_and_type_full ~warn ~depfiles ~depdirs f) in
   let ml_ast =
     wrap (lazy (Generator.generate_interpreter deps (get_basename f, sem) (List.mem AllTypes options))) in
   let result = Mlprinter.print_ast ml_ast in
