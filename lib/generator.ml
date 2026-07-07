@@ -134,15 +134,20 @@ let is_exhaustive sem p =
     print_endline (Necro.Printer.string_of_pattern p); assert false
     *)
 
-let rec get_term_of_term deps sem t =
+let rec get_term_of_term hook_terms deps sem t =
+  let get_term_of_term = get_term_of_term hook_terms deps sem in
+  let get_term_of_skel = get_term_of_skel hook_terms deps sem in
   let get_record_field (((f, _), _), t) =
-    (f, get_term_of_term deps sem t)
+    (f, get_term_of_term t)
   in
   begin match t.tdesc with
   | TVar (LetBound (n, _)) ->
       MLTVar ([], n)
   | TVar (TopLevel (_, (x, None), _)) ->
-      MLTVar ([], x)
+      if List.mem x hook_terms then
+        MLTVar (["Hook"], x)
+      else
+        MLTVar ([], x)
   | TVar (TopLevel (_, (x, Some m), _)) ->
       MLTVar ([cap m], x)
   | TConstr (((c, m), (ty, _)), {tdesc=TTuple [];_}) ->
@@ -156,78 +161,80 @@ let rec get_term_of_term deps sem t =
       else
         MLTConstr (of_from m, c, Some MLTTop)
   | TConstr (((c, m), _), t) ->
-      MLTConstr (of_from m, c, Some (get_term_of_term deps sem t))
+      MLTConstr (of_from m, c, Some (get_term_of_term t))
   | TTuple [] -> MLTTop
   | TTuple tl ->
-      MLTTuple (List.map (get_term_of_term deps sem) tl)
+      MLTTuple (List.map get_term_of_term tl)
   | TFunc (p, s) ->
       if is_exhaustive sem p then
-        MLTFunc (get_pattern deps sem p, get_term_of_skel deps sem s)
+        MLTFunc (get_pattern deps sem p, get_term_of_skel s)
       else
         MLTFunction (
-          (get_pattern deps sem p, get_term_of_skel deps sem s) ::
+          (get_pattern deps sem p, get_term_of_skel s) ::
         (MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTTop])) :: [])
   | TField (t, ((f, _), _)) ->
-      MLTField (get_term_of_term deps sem t, f)
+      MLTField (get_term_of_term t, f)
   | TNth (t, tyl, i) ->
       if List.compare_length_with tyl 2 = 0 then
       begin
         if i = 1 then
-          MLTApp (MLTVar ([], "fst"), [get_term_of_term deps sem t])
+          MLTApp (MLTVar ([], "fst"), [get_term_of_term t])
         else
-          MLTApp (MLTVar ([], "snd"), [get_term_of_term deps sem t])
+          MLTApp (MLTVar ([], "snd"), [get_term_of_term t])
       end
       else
       let l = List.init (List.length tyl) (fun j ->
         if j = i - 1 then MLPVar "x" else MLPWild)
       in
       let pattern = MLPTuple l in
-      MLTLetIn (pattern, get_term_of_term deps sem t, MLTVar ([], "x"))
+      MLTLetIn (pattern, get_term_of_term t, MLTVar ([], "x"))
   | TRecMake [] -> assert false
   | TRecMake (((((_, f), _), _) :: _) as tl) ->
       MLTRecMake (of_from f, List.map get_record_field tl)
   | TRecSet (t, tl) ->
       MLTRecWith (
-        get_term_of_term deps sem t,
+        get_term_of_term t,
         List.map get_record_field tl
       )
   end
 
-and get_term_of_skel deps sem s =
+and get_term_of_skel hook_terms (deps : Skeleton.dependencies) (sem : t) s =
+  let get_term_of_skel = get_term_of_skel hook_terms deps sem in
+  let get_term_of_term = get_term_of_term hook_terms deps sem in
   begin match s.sdesc with
   | Return t ->
-      MLTApp (MLTVar (["M"], "ret"), [get_term_of_term deps sem t])
+      MLTApp (MLTVar (["M"], "ret"), [get_term_of_term t])
   | Apply (f, x) ->
       MLTApp (
         MLTVar (["M"], "apply"),
-        get_term_of_term deps sem f :: get_term_of_term deps sem x :: []
+        get_term_of_term f :: get_term_of_term x :: []
       )
   | LetIn (NoBind, p, s1, s2) ->
       if is_exhaustive sem p
     then
       MLTLetStarIn (
         get_pattern deps sem p,
-        get_term_of_skel deps sem s1,
-        get_term_of_skel deps sem s2
+        get_term_of_skel s1,
+        get_term_of_skel s2
       )
     else
       begin match s1.sdesc with
       | Return t1 ->
           MLTMatchWith (
-            get_term_of_term deps sem t1,
+            get_term_of_term t1,
             [
-              (get_pattern deps sem p, get_term_of_skel deps sem s2) ;
+              (get_pattern deps sem p, get_term_of_skel s2) ;
               (MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTTop]))
             ]
           )
       | _ ->
           MLTLetStarIn (
             MLPVar !tmp,
-            get_term_of_skel deps sem s1,
+            get_term_of_skel s1,
             MLTMatchWith (
               MLTVar ([], !tmp),
               [
-                (get_pattern deps sem p, get_term_of_skel deps sem s2) ;
+                (get_pattern deps sem p, get_term_of_skel s2) ;
                 (MLPWild, MLTApp (MLTVar (["M"], "fail"), [MLTTop]))
               ]
             )
@@ -241,16 +248,16 @@ and get_term_of_skel deps sem s =
         | Return t1 ->
             (* bind (t1, λ p → s2) *)
             MLTApp ( MLTVar (of_from m, b),
-              [MLTTuple ( get_term_of_term deps sem t1 ::
-                MLTFunc (get_pattern deps sem p, get_term_of_skel deps sem s2) :: [])])
+              [MLTTuple ( get_term_of_term t1 ::
+                MLTFunc (get_pattern deps sem p, get_term_of_skel s2) :: [])])
         | _ ->
             (* let* tmp = s1 in
                bind (tmp, λ p → s2) *)
             MLTLetStarIn (
-              MLPVar !tmp, get_term_of_skel deps sem s1,
+              MLPVar !tmp, get_term_of_skel s1,
               MLTApp ( MLTVar (of_from m, b),
                 [MLTTuple (MLTVar ([], !tmp) ::
-                  MLTFunc (get_pattern deps sem p, get_term_of_skel deps sem s2) :: [])]
+                  MLTFunc (get_pattern deps sem p, get_term_of_skel s2) :: [])]
               )
             )
         end
@@ -259,10 +266,10 @@ and get_term_of_skel deps sem s =
                bind (tmp, s')
                where s' = is the exhaustive version of [λ p → s2] *)
       MLTLetStarIn (
-        MLPVar !tmp, get_term_of_skel deps sem s1,
+        MLPVar !tmp, get_term_of_skel s1,
         MLTApp ( MLTVar (of_from m, b),
           [MLTTuple (MLTVar ([], !tmp) ::
-            get_term_of_term deps sem
+            get_term_of_term 
             {tdesc=TFunc (p, s2);tloc=Location.ghost_loc;ttyp=
               {tydesc=Product [];tyloc=Location.ghost_loc}} :: [])]
         )
@@ -270,24 +277,24 @@ and get_term_of_skel deps sem s =
   | Branching (_, outs) ->
       let branches =
         List.map (fun sk ->
-          MLTFunc (MLPTop, get_term_of_skel deps sem sk)
+          MLTFunc (MLPTop, get_term_of_skel sk)
         ) outs
       in
       MLTApp (MLTVar (["M"], "branch"), [MLTList branches])
   | Match ({sdesc=Return tm;_}, outs) ->
       let branches =
         List.map (fun (p, s) ->
-          (get_pattern deps sem p, get_term_of_skel deps sem s)) outs
+          (get_pattern deps sem p, get_term_of_skel s)) outs
       in
-      MLTMatchWith (get_term_of_term deps sem tm, branches)
+      MLTMatchWith (get_term_of_term tm, branches)
   | Match (sm, outs) ->
       let branches =
         List.map (fun (p, s) ->
-          (get_pattern deps sem p, get_term_of_skel deps sem s)) outs
+          (get_pattern deps sem p, get_term_of_skel s)) outs
       in
       (* let* _tmp = sm in … *)
       MLTLetStarIn (
-        MLPVar !tmp, get_term_of_skel deps sem sm,
+        MLPVar !tmp, get_term_of_skel sm,
         MLTMatchWith (MLTVar ([], !tmp), branches))
   | Exists _ -> failwith "Existentials are not supported by Necro ML yet"
   end
@@ -299,12 +306,11 @@ let get_poly_sig ta (ty: typ) =
   if ta = [] then None else
   Some (MLTyPoly (ta, get_type ty))
 
-
 (* Write the mutually-recursive terms *)
-let get_term_definitions deps sem =
+let get_term_definitions hook_terms deps sem =
   let open SMap in
   let get_term_decl name (ta, ty, t, c) =
-    (name, c, [], get_poly_sig ta ty, get_term_of_term deps sem t)
+    (name, c, [], get_poly_sig ta ty, get_term_of_term hook_terms deps sem t)
   in
   let spec_terms =
     sem.ss_terms
@@ -456,18 +462,43 @@ let get_with l =
   in
   List.map get_one_with l
 
+let get_effect_typedef hook_terms sem : type_def option =
+  let effs =
+    hook_terms |> List.map @@ fun name ->
+      let (c, (_, ty, _)) = SMap.find name sem.ss_terms in
+      let a, b =
+        match get_type ty with
+        | MLTyArrow (a, b) -> a, b
+        | _ -> assert false
+      in
+      (("Hook_" ^ name), a, b, c)
+  in
+  match effs with
+  | [] -> None
+  | _ -> Some (MLTDEffect (Some "Hook effects", effs))
+
+let get_effects_m hook_terms sem =
+  match get_effect_typedef hook_terms sem with
+  | None -> MBlock []
+  | Some t -> MTypeDefs [ t ]
+
+let get_effects_mt hook_terms sem =
+  match get_effect_typedef hook_terms sem with
+  | None -> MTBlock []
+  | Some t -> MTTypeDefs [ t ]
+
 (* writes the UNSPEC module type *)
-let unspec_module_type dep_map deps sem =
-	let one_include (i, _) =
-		let l =
-			begin match SMap.find_opt i dep_map with
-			| None -> assert false
-			| Some l -> l
-			end
-		in
-		let withes = (with_modules l) in
-		MTModule (cap i, [cap i; "INTERPRETER"], withes)
-	in
+let unspec_module_type hook_terms dep_map deps sem =
+  let one_include (i, _) =
+    let l =
+      begin match SMap.find_opt i dep_map with
+      | None -> assert false
+      | Some l -> l
+      end
+    in
+    let withes = (with_modules l) in
+    MTModule (cap i, [cap i; "INTERPRETER"], withes)
+  in
   let com = " All types, and the unspecified terms " in
   let def =
     MTBlock (
@@ -475,6 +506,7 @@ let unspec_module_type dep_map deps sem =
       List.map one_include (SMap.bindings deps) @
       [MTInclude "TYPES"])
     :: MTTypeDefs (specified_types ~comm:true sem @ get_aliases sem)
+    :: (get_effects_mt hook_terms sem)
     :: MTBlock (get_term_signatures ~all:false sem)
     :: []
   in
@@ -521,8 +553,20 @@ let get_opens sem: module_tld list =
   List.filter_map print_include (SMap.bindings sem.ss_deps)
 *)
 
+let get_hook_funcs hook_terms =
+  let funcs = hook_terms |> List.map @@ fun name ->
+    let eff = MLTConstr ([], ("Hook_" ^ name), Some (MLTVar ([], "x"))) in
+    let mlterm =
+      MLTApp (MLTVar ([ "Effect" ], "perform"), [ eff ])
+    in
+    MValDef (name, None, [ "x" ], None, mlterm)
+  in
+  match funcs with
+  | [] -> MBlock []
+  | _ -> MOpenStruct [ MModule ("Hook", funcs) ]
+
 (* writes the MakeInterpreter functor *)
-let makeinterpreter_functor deps sem =
+let makeinterpreter_functor hook_terms deps sem =
   let comment = " Module defining the specified terms " in
   let args = ("F",["UNSPEC"],[]) ::
     List.map (fun (i, _) ->
@@ -530,8 +574,9 @@ let makeinterpreter_functor deps sem =
   in
   let body =
     MInclude ["F"] ::
+    get_hook_funcs hook_terms ::
     MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind")) ::
-    get_term_definitions deps sem
+    get_term_definitions hook_terms deps sem
   in
   Functor (Some comment, "MakeInterpreter", args, body)
 
@@ -552,7 +597,7 @@ let alltypes_functor deps sem =
   in
   Functor (Some com, "AllTypes", args, body)
 
-let unspec_functor deps sem =
+let unspec_functor hook_terms deps sem =
   let com = " A default instantiation " in
   let args =
     ("M", ["MONAD"], [])
@@ -568,12 +613,13 @@ let unspec_functor deps sem =
       :: List.map (fun (i, _) ->
           MModuleAlias (cap i, [cap i])) (SMap.bindings deps))
     :: MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
+    :: (get_effects_m hook_terms sem)
     :: MBlock (get_terms_not_implemented deps sem)
     :: []
   in
   Functor (Some com, "Unspec", args, body)
 
-let interpreter_module_type deps sem =
+let interpreter_module_type hook_terms deps sem =
   let deps = List.map (fun (i, _) ->
     MTModule (cap i, [cap i; "INTERPRETER"], [("M",["M"])])) (SMap.bindings deps) in
   let comment = " The module type for interpreters " in
@@ -582,19 +628,23 @@ let interpreter_module_type deps sem =
     :: MTBlock deps
     :: MTBlock (unspec_type_decl sem)
     :: MTTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
+    :: (get_effects_mt hook_terms sem)
     :: MTBlock (get_term_signatures ~all:true sem)
     :: []
   in
   ModuleType (Some comment, "INTERPRETER", body)
 
 let build_map deps sem =
-	let rec aux map (i, s) =
-		let incl_list = SSet.to_list s.ss_includes in
+  let rec aux map (i, s) =
+    let incl_list = SSet.to_list s.ss_includes in
     let incl = List.map (fun i -> (i, SMap.find i deps)) incl_list in
-		let map = SMap.add i incl_list map in
-		List.fold_left aux map incl
-	in
-	aux SMap.empty ("this", sem)
+    let map = SMap.add i incl_list map in
+    List.fold_left aux map incl
+  in
+  aux SMap.empty ("this", sem)
+
+
+let hook_re = Str.regexp_string "__hook__"
 
 (* writes the interpreter generator modules to stdout *)
 let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem) (alltypes: bool): ast =
@@ -605,29 +655,33 @@ let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem) (alltype
     | Some v -> Build_info.V1.Version.to_string v
     end
   in
+  let hook_terms : string list =
+    sem.ss_terms
+    |> SMap.to_seq
+    |> Seq.filter_map (fun (name, (c, _)) ->
+        match c with
+        | None -> None
+        | Some c ->
+            try ignore (Str.search_forward hook_re c 0); Some name
+            with Not_found -> None)
+    |> List.of_seq
+  in
   let dep_map = build_map deps sem in
   let comm = Comment
   (" This file was automatically generated using necroml version " ^ version ^
      ".\nSee https://gitlab.inria.fr/skeletons/necro-ml/ for more informations. ") in
   let ast =
-    if alltypes then
-      [ comm
-      ; types_module_type sem (* module type TYPES *)
-      ; alltypes_functor deps sem (* module AllTypes (T:TYPES) *)
-      ; monad_module_type sem (* module type MONAD *)
-      ; unspec_module_type dep_map deps sem (* module type UNSPEC *)
-      ; unspec_functor deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
-      ; interpreter_module_type deps sem (* module type INTERPRETER *)
-      ; makeinterpreter_functor deps sem (* module MakeInterpreter (F: UNSPEC) …*)
-      ]
-    else
-      [ comm
-      ; types_module_type sem (* module type TYPES *)
-      ; monad_module_type sem (* module type MONAD *)
-      ; unspec_module_type dep_map deps sem (* module type UNSPEC *)
-      ; unspec_functor deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
-      ; interpreter_module_type deps sem (* module type INTERPRETER *)
-      ; makeinterpreter_functor deps sem (* module MakeInterpreter (F: UNSPEC) …*)
-      ]
+    [ comm
+    ; types_module_type sem (* module type TYPES *)
+    ] @
+    (if alltypes then
+      [ alltypes_functor deps sem (* module AllTypes (T:TYPES) *) ]
+    else []) @
+    [ monad_module_type sem (* module type MONAD *)
+    ; unspec_module_type hook_terms dep_map deps sem (* module type UNSPEC *)
+    ; unspec_functor hook_terms deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
+    ; interpreter_module_type hook_terms deps sem (* module type INTERPRETER *)
+    ; makeinterpreter_functor hook_terms deps sem (* module MakeInterpreter (F: UNSPEC) …*)
+    ]
   in
   ast

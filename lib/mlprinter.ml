@@ -300,6 +300,10 @@ let print_constr_def ff (name, ty, com) =
       fprintf ff "| %s of %a%a" name print_type ty print_space_com com
   end
 
+let print_effect_def ff (name, a, b, com) =
+  fprintf ff "| %s: %a -> %a Effect.t%a"
+  name print_type a print_type b print_space_com com
+
 let print_type_def beg ff def =
   begin match def with
   | MLTDVariant (com, a, name, o, cl) ->
@@ -349,6 +353,11 @@ let print_type_def beg ff def =
         beg
         print_type (MLTyBase (name, List.map (fun x -> MLTyVar x) a))
         print_type ty
+  | MLTDEffect (com, effs) ->
+      fprintf ff
+      "%a@[<v>%s _ Effect.t +=@,%a@]"
+        print_com_nl com beg
+        (pp_print_list print_effect_def) effs
   end
 
 let print_type_defs ff defs =
