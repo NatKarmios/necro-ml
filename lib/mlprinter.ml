@@ -302,7 +302,7 @@ let print_constr_def ff (name, ty, com) =
 
 let print_effect_def ff (name, a, b, com) =
   fprintf ff "| %s: %a -> %a Effect.t%a"
-  name print_type a print_type b print_space_com com
+  name print_type_protect a print_type b print_space_com com
 
 let print_type_def beg ff def =
   begin match def with
