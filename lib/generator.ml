@@ -134,9 +134,9 @@ let is_exhaustive sem p =
     print_endline (Necro.Printer.string_of_pattern p); assert false
     *)
 
-let rec get_term_of_term hook_terms deps sem t =
-  let get_term_of_term = get_term_of_term hook_terms deps sem in
-  let get_term_of_skel = get_term_of_skel hook_terms deps sem in
+let rec get_term_of_term hook_terms tail_terms deps sem t =
+  let get_term_of_term = get_term_of_term hook_terms tail_terms deps sem in
+  let get_term_of_skel = get_term_of_skel hook_terms tail_terms deps sem in
   let get_record_field (((f, _), _), t) =
     (f, get_term_of_term t)
   in
@@ -144,12 +144,22 @@ let rec get_term_of_term hook_terms deps sem t =
   | TVar (LetBound (n, _)) ->
       MLTVar ([], n)
   | TVar (TopLevel (_, (x, None), _)) ->
-      if List.mem x hook_terms then
-        (* fun a -> hook_x a (fun () -> x a) *)
+      let hook = List.mem x hook_terms and tail = List.mem x tail_terms in
+      if hook || tail then
+        (* fun a -> hook_x a (fun () -> x a), and for a __tail__ term
+           fun a -> tail_call (fun () -> …) around that *)
         let a = MLTVar ([], "hook_arg") in
-        MLTFunc (MLPVar "hook_arg",
-          MLTApp (MLTVar ([], "hook_" ^ x),
-            [ a; MLTFunc (MLPTop, MLTApp (MLTVar ([], x), [ a ])) ]))
+        let call = MLTApp (MLTVar ([], x), [ a ]) in
+        let call =
+          if hook then
+            MLTApp (MLTVar ([], "hook_" ^ x), [ a; MLTFunc (MLPTop, call) ])
+          else call
+        in
+        let call =
+          if tail then MLTApp (MLTVar ([], "tail_call"), [ MLTFunc (MLPTop, call) ])
+          else call
+        in
+        MLTFunc (MLPVar "hook_arg", call)
       else
         MLTVar ([], x)
   | TVar (TopLevel (_, (x, Some m), _)) ->
@@ -202,9 +212,9 @@ let rec get_term_of_term hook_terms deps sem t =
       )
   end
 
-and get_term_of_skel hook_terms (deps : Skeleton.dependencies) (sem : t) s =
-  let get_term_of_skel = get_term_of_skel hook_terms deps sem in
-  let get_term_of_term = get_term_of_term hook_terms deps sem in
+and get_term_of_skel hook_terms tail_terms (deps : Skeleton.dependencies) (sem : t) s =
+  let get_term_of_skel = get_term_of_skel hook_terms tail_terms deps sem in
+  let get_term_of_term = get_term_of_term hook_terms tail_terms deps sem in
   begin match s.sdesc with
   | Return t ->
       MLTApp (MLTVar (["M"], "ret"), [get_term_of_term t])
@@ -311,10 +321,10 @@ let get_poly_sig ta (ty: typ) =
   Some (MLTyPoly (ta, get_type ty))
 
 (* Write the mutually-recursive terms *)
-let get_term_definitions hook_terms deps sem =
+let get_term_definitions hook_terms tail_terms deps sem =
   let open SMap in
   let get_term_decl name (ta, ty, t, c) =
-    (name, c, [], get_poly_sig ta ty, get_term_of_term hook_terms deps sem t)
+    (name, c, [], get_poly_sig ta ty, get_term_of_term hook_terms tail_terms deps sem t)
   in
   let spec_terms =
     sem.ss_terms
@@ -485,8 +495,20 @@ let get_hook_defaults hook_terms =
     MValDef ("hook_" ^ name, None, [ "_"; "k" ], None,
       MLTApp (MLTVar ([], "k"), [ MLTTop ]))
 
+(* [val tail_call: (unit -> 'a M.t) -> 'a M.t], through which every call to a
+   __tail__ term runs, when there is one *)
+let get_tail_sig tail_terms =
+  if tail_terms = [] then [] else
+  let t = MLTyFrom (["M"], "t", [MLTyVar "a"]) in
+  [ MTValDecl (None, "tail_call", MLTyArrow (MLTyArrow (MLTyUnit, t), t)) ]
+
+(* [let tail_call k = k ()] *)
+let get_tail_default tail_terms =
+  if tail_terms = [] then [] else
+  [ MValDef ("tail_call", None, [ "k" ], None, MLTApp (MLTVar ([], "k"), [ MLTTop ])) ]
+
 (* writes the UNSPEC module type *)
-let unspec_module_type hook_terms dep_map deps sem =
+let unspec_module_type hook_terms tail_terms dep_map deps sem =
   let one_include (i, _) =
     let l =
       begin match SMap.find_opt i dep_map with
@@ -504,7 +526,7 @@ let unspec_module_type hook_terms dep_map deps sem =
       List.map one_include (SMap.bindings deps) @
       [MTInclude "TYPES"])
     :: MTTypeDefs (specified_types ~comm:true sem @ get_aliases sem)
-    :: MTBlock (get_hook_sigs hook_terms sem)
+    :: MTBlock (get_hook_sigs hook_terms sem @ get_tail_sig tail_terms)
     :: MTBlock (get_term_signatures ~all:false sem)
     :: []
   in
@@ -552,7 +574,7 @@ let get_opens sem: module_tld list =
 *)
 
 (* writes the MakeInterpreter functor *)
-let makeinterpreter_functor hook_terms deps sem =
+let makeinterpreter_functor hook_terms tail_terms deps sem =
   let comment = " Module defining the specified terms " in
   let args = ("F",["UNSPEC"],[]) ::
     List.map (fun (i, _) ->
@@ -561,7 +583,7 @@ let makeinterpreter_functor hook_terms deps sem =
   let body =
     MInclude ["F"] ::
     MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind")) ::
-    get_term_definitions hook_terms deps sem
+    get_term_definitions hook_terms tail_terms deps sem
   in
   Functor (Some comment, "MakeInterpreter", args, body)
 
@@ -582,7 +604,7 @@ let alltypes_functor deps sem =
   in
   Functor (Some com, "AllTypes", args, body)
 
-let unspec_functor hook_terms deps sem =
+let unspec_functor hook_terms tail_terms deps sem =
   let com = " A default instantiation " in
   let args =
     ("M", ["MONAD"], [])
@@ -598,7 +620,7 @@ let unspec_functor hook_terms deps sem =
       :: List.map (fun (i, _) ->
           MModuleAlias (cap i, [cap i])) (SMap.bindings deps))
     :: MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
-    :: MBlock (get_hook_defaults hook_terms)
+    :: MBlock (get_hook_defaults hook_terms @ get_tail_default tail_terms)
     :: MBlock (get_terms_not_implemented deps sem)
     :: []
   in
@@ -629,6 +651,7 @@ let build_map deps sem =
 
 
 let hook_re = Str.regexp_string "__hook__"
+let tail_re = Str.regexp_string "__tail__"
 
 (* writes the interpreter generator modules to stdout *)
 let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem) (alltypes: bool): ast =
@@ -639,17 +662,18 @@ let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem) (alltype
     | Some v -> Build_info.V1.Version.to_string v
     end
   in
-  let hook_terms : string list =
+  let annotated re : string list =
     sem.ss_terms
     |> SMap.to_seq
     |> Seq.filter_map (fun (name, (c, _)) ->
         match c with
         | None -> None
         | Some c ->
-            try ignore (Str.search_forward hook_re c 0); Some name
+            try ignore (Str.search_forward re c 0); Some name
             with Not_found -> None)
     |> List.of_seq
   in
+  let hook_terms = annotated hook_re and tail_terms = annotated tail_re in
   let dep_map = build_map deps sem in
   let comm = Comment
   (" This file was automatically generated using necroml version " ^ version ^
@@ -662,10 +686,10 @@ let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem) (alltype
       [ alltypes_functor deps sem (* module AllTypes (T:TYPES) *) ]
     else []) @
     [ monad_module_type sem (* module type MONAD *)
-    ; unspec_module_type hook_terms dep_map deps sem (* module type UNSPEC *)
-    ; unspec_functor hook_terms deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
+    ; unspec_module_type hook_terms tail_terms dep_map deps sem (* module type UNSPEC *)
+    ; unspec_functor hook_terms tail_terms deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
     ; interpreter_module_type deps sem (* module type INTERPRETER *)
-    ; makeinterpreter_functor hook_terms deps sem (* module MakeInterpreter (F: UNSPEC) …*)
+    ; makeinterpreter_functor hook_terms tail_terms deps sem (* module MakeInterpreter (F: UNSPEC) …*)
     ]
   in
   ast
