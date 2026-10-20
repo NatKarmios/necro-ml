@@ -145,7 +145,11 @@ let rec get_term_of_term hook_terms deps sem t =
       MLTVar ([], n)
   | TVar (TopLevel (_, (x, None), _)) ->
       if List.mem x hook_terms then
-        MLTVar (["Hook"], x)
+        (* fun a -> hook_x a (fun () -> x a) *)
+        let a = MLTVar ([], "hook_arg") in
+        MLTFunc (MLPVar "hook_arg",
+          MLTApp (MLTVar ([], "hook_" ^ x),
+            [ a; MLTFunc (MLPTop, MLTApp (MLTVar ([], x), [ a ])) ]))
       else
         MLTVar ([], x)
   | TVar (TopLevel (_, (x, Some m), _)) ->
@@ -462,30 +466,24 @@ let get_with l =
   in
   List.map get_one_with l
 
-let get_effect_typedef hook_terms sem : type_def option =
-  let effs =
-    hook_terms |> List.map @@ fun name ->
-      let (c, (_, ty, _)) = SMap.find name sem.ss_terms in
-      let a, b =
-        match get_type ty with
-        | MLTyArrow (a, b) -> a, b
-        | _ -> assert false
-      in
-      (("Hook_" ^ name), a, b, c)
-  in
-  match effs with
-  | [] -> None
-  | _ -> Some (MLTDEffect (Some "Hook effects", effs))
+(* [val hook_x: a -> (unit -> b) -> b] for each hooked term [x: a -> b]: a
+   call [x a] runs as [hook_x a (fun () -> x a)] *)
+let get_hook_sigs hook_terms sem =
+  hook_terms |> List.map @@ fun name ->
+    let (_, (_, ty, _)) = SMap.find name sem.ss_terms in
+    let a, b =
+      match get_type ty with
+      | MLTyArrow (a, b) -> a, b
+      | _ -> assert false
+    in
+    MTValDecl (None, "hook_" ^ name,
+      MLTyArrow (a, MLTyArrow (MLTyArrow (MLTyUnit, b), b)))
 
-let get_effects_m hook_terms sem =
-  match get_effect_typedef hook_terms sem with
-  | None -> MBlock []
-  | Some t -> MTypeDefs [ t ]
-
-let get_effects_mt hook_terms sem =
-  match get_effect_typedef hook_terms sem with
-  | None -> MTBlock []
-  | Some t -> MTTypeDefs [ t ]
+(* [let hook_x _ k = k ()] for each hooked term [x] *)
+let get_hook_defaults hook_terms =
+  hook_terms |> List.map @@ fun name ->
+    MValDef ("hook_" ^ name, None, [ "_"; "k" ], None,
+      MLTApp (MLTVar ([], "k"), [ MLTTop ]))
 
 (* writes the UNSPEC module type *)
 let unspec_module_type hook_terms dep_map deps sem =
@@ -506,7 +504,7 @@ let unspec_module_type hook_terms dep_map deps sem =
       List.map one_include (SMap.bindings deps) @
       [MTInclude "TYPES"])
     :: MTTypeDefs (specified_types ~comm:true sem @ get_aliases sem)
-    :: (get_effects_mt hook_terms sem)
+    :: MTBlock (get_hook_sigs hook_terms sem)
     :: MTBlock (get_term_signatures ~all:false sem)
     :: []
   in
@@ -553,18 +551,6 @@ let get_opens sem: module_tld list =
   List.filter_map print_include (SMap.bindings sem.ss_deps)
 *)
 
-let get_hook_funcs hook_terms =
-  let funcs = hook_terms |> List.map @@ fun name ->
-    let eff = MLTConstr ([], ("Hook_" ^ name), Some (MLTVar ([], "x"))) in
-    let mlterm =
-      MLTApp (MLTVar ([ "Effect" ], "perform"), [ eff ])
-    in
-    MValDef (name, None, [ "x" ], None, mlterm)
-  in
-  match funcs with
-  | [] -> MBlock []
-  | _ -> MOpenStruct [ MModule ("Hook", funcs) ]
-
 (* writes the MakeInterpreter functor *)
 let makeinterpreter_functor hook_terms deps sem =
   let comment = " Module defining the specified terms " in
@@ -574,7 +560,6 @@ let makeinterpreter_functor hook_terms deps sem =
   in
   let body =
     MInclude ["F"] ::
-    get_hook_funcs hook_terms ::
     MValDef ("( let* )", None, [], None, MLTVar (["M"], "bind")) ::
     get_term_definitions hook_terms deps sem
   in
@@ -613,13 +598,13 @@ let unspec_functor hook_terms deps sem =
       :: List.map (fun (i, _) ->
           MModuleAlias (cap i, [cap i])) (SMap.bindings deps))
     :: MTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
-    :: (get_effects_m hook_terms sem)
+    :: MBlock (get_hook_defaults hook_terms)
     :: MBlock (get_terms_not_implemented deps sem)
     :: []
   in
   Functor (Some com, "Unspec", args, body)
 
-let interpreter_module_type hook_terms deps sem =
+let interpreter_module_type deps sem =
   let deps = List.map (fun (i, _) ->
     MTModule (cap i, [cap i; "INTERPRETER"], [("M",["M"])])) (SMap.bindings deps) in
   let comment = " The module type for interpreters " in
@@ -628,7 +613,6 @@ let interpreter_module_type hook_terms deps sem =
     :: MTBlock deps
     :: MTBlock (unspec_type_decl sem)
     :: MTTypeDefs (specified_types ~comm:false sem @ get_aliases sem)
-    :: (get_effects_mt hook_terms sem)
     :: MTBlock (get_term_signatures ~all:true sem)
     :: []
   in
@@ -680,7 +664,7 @@ let generate_interpreter (deps: skeletal_semantics SMap.t) (_self, sem) (alltype
     [ monad_module_type sem (* module type MONAD *)
     ; unspec_module_type hook_terms dep_map deps sem (* module type UNSPEC *)
     ; unspec_functor hook_terms deps sem (* module Unspec (M:MONAD) (T:TYPES) *)
-    ; interpreter_module_type hook_terms deps sem (* module type INTERPRETER *)
+    ; interpreter_module_type deps sem (* module type INTERPRETER *)
     ; makeinterpreter_functor hook_terms deps sem (* module MakeInterpreter (F: UNSPEC) …*)
     ]
   in
